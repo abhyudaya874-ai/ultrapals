@@ -1,6 +1,6 @@
 "use client";
 import "@bryntum/scheduler/scheduler.css"; // base structure
-import "@bryntum/scheduler/svalbard-light.css"; // theme
+import "@bryntum/scheduler/svalbard-dark.css"; // theme
 import "@bryntum/scheduler/fontawesome/css/fontawesome.css"; // icons need both fontawesome files
 import "@bryntum/scheduler/fontawesome/css/solid.css";
 import { BryntumScheduler } from "@bryntum/scheduler-react";
@@ -19,8 +19,8 @@ export default function PromiseTimeline() {
   }, []);
 
   const data = useMemo(() => toScheduler((rows ?? []).map((r) => ({ promiseId: r.promiseId, payer: r.payer, title: r.title, dueAtIso: r.at, state: r.state, amountMinor: r.amountMinor, currency: r.currency }))), [rows]);
-  if (!rows) return <p className="p-4 text-neutral-500">Loading…</p>;
-  if (data.events.length === 0) return <p className="p-4 text-neutral-500">No promises yet.</p>;
+  if (!rows) return <div className="h-full animate-pulse rounded-card bg-surface-2" />;
+  if (data.events.length === 0) return <p className="p-4 text-[13px] text-fg-dim">No promises yet.</p>;
 
   return (
     <BryntumScheduler

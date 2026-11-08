@@ -1,11 +1,14 @@
 "use client";
 import dynamic from "next/dynamic";
 
-const PromiseTimeline = dynamic(() => import("@/components/PromiseTimeline"), { ssr: false, loading: () => <p className="p-4">Loading…</p> });
+const PromiseTimeline = dynamic(() => import("@/components/PromiseTimeline"), {
+  ssr: false,
+  loading: () => <div className="h-full animate-pulse rounded-card bg-surface-2" />,
+});
 
 export default function TimelinePage() {
   return (
-    <main className="h-screen w-full p-2">
+    <main className="h-full overflow-y-auto p-3">
       <PromiseTimeline />
     </main>
   );
