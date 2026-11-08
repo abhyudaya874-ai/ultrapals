@@ -34,6 +34,7 @@ Generated from the real code, then annotated. If you add an export, add it here 
 | `app/api/studio/query/route.ts` | `GET ?limit=` | rows for Studio / Bryntum |
 | `app/api/studio/llm/[...path]/route.ts` | `POST` | key-safe proxy: forwards ONLY `chat/completions` to an OpenAI-compatible provider |
 | `app/api/promises/open/route.ts` | `GET` | open promise ids (for the Render sweep) |
+| `app/api/promises/recent/route.ts` | `GET ?limit=` | latest promises for the sidebar (id, title, state, amountMinor, currency, createdAt) |
 | `app/api/render/sweep/route.ts` | `POST` | starts the Render workflow task |
 | `app/api/capabilities/route.ts` | `GET` | `capabilityReport()` |
 
