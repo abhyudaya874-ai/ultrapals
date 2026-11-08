@@ -34,3 +34,15 @@ INR stays parseable so an INR product reads fine and then yields `CURRENCY_MISMA
 
 The docs describe deployed agents as human-facing (web UI behind sign-in, Slack) and `frontend` agents as port-80 web apps; they do not describe a
 programmatic invoke API. So the concierge calls our read-only endpoints and the app only links to it.
+
+## 5. D-UI: Perplexity-Computer skin overrides (authorized 2026-11-08)
+
+The UI overhaul task (`make Standing Promise look and behave like Perplexity Computer`) carries four owner-authorized
+overrides. Everything else in `.devin/rules/*` still binds.
+
+- **O1 — Permanent dark theme, no toggle.** Rule 20 lists "dark mode" under Deferred by default; the owner authorized a
+  permanent dark theme for this overhaul (no toggle, no OS switch). Token values live in `app/globals.css` `@theme`.
+- **O2 — Presentational files may exceed 60 changed lines.** Still one concern per file; the cap is waived for new UI
+  files only, not for money-path or agent code.
+- **O3 — A source file and its own `*.test.ts` count as one file** toward the "2 files per slice" cap.
+- **O4 — CSS-only motion up to 200ms** (disclosure, drawer, pulse). No JS animation, no animation library.

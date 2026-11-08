@@ -54,6 +54,7 @@ Also ask: is there a demo beat for it? No → backlog.
 
 Auth, multi-tenant, email, webhooks beyond capture, admin UI, i18n, dark mode, animation beyond the trace panel.
 Write them to `docs/BACKLOG.md` and move on.
+Dark mode exception: the permanent dark theme is authorized by `docs/DECISIONS.md` §5 (D-UI).
 
 ## When scope must grow, say the cost out loud first
 
