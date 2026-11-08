@@ -19,6 +19,7 @@ export interface ThreadPromise {
   id: string;
   title: string;
   amountLabel: string;
+  currency: string;
   windowEndsAtIso: string;
   state: PromiseState;
   condition: Condition;
