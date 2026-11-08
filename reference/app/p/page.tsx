@@ -25,15 +25,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
   const verdict = ((lastVerdict?.payload as { verdict?: Verdict } | undefined)?.verdict) ?? null;
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    <main className="h-full">
       <PromiseSurface
         promise={{
           id: p.id,
           title: p.title,
           amountLabel: `${formatMajor(p.amountMinor, p.currency)} ${p.currency}`,
+          currency: p.currency,
           windowEndsAtIso: p.windowEndsAt.toISOString(),
           state: p.state,
           conditionKind: p.condition.kind,
+          condition: p.condition,
         }}
         approveUrl={p.paypalOrderId && p.state !== "captured" ? approveUrlFor(p.paypalOrderId) : null}
         log={events.map((e) => ({ id: e.id, kind: e.kind, attempt: e.attempt, createdAtIso: e.createdAt.toISOString() }))}

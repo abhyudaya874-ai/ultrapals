@@ -23,7 +23,7 @@ export function Dock(p: {
 }
 
 /** Esc and outside click close a popover or pane. */
-export function useDismiss(open: boolean, onClose: () => void, ref: RefObject<HTMLElement | null>) {
+export function useDismiss<T extends HTMLElement>(open: boolean, onClose: () => void, ref: RefObject<T | null>) {
   useEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -35,7 +35,7 @@ export function useDismiss(open: boolean, onClose: () => void, ref: RefObject<HT
 }
 
 /** Follow new rows only while the reader is near the bottom; otherwise show the round "jump" button (S1). */
-export function useStickToBottom(ref: RefObject<HTMLElement | null>, dep: number) {
+export function useStickToBottom<T extends HTMLElement>(ref: RefObject<T | null>, dep: number) {
   const [away, setAway] = useState(false);
   useEffect(() => {
     const el = ref.current;

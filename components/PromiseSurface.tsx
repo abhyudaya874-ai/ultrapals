@@ -1,24 +1,25 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PromiseState } from "@/db/schema";
 import type { TraceEvent } from "@/lib/agent/types";
 import { parseSse, upsertEvent } from "@/lib/sse";
-import type { Verdict } from "@/lib/verdict";
-import { TracePanel } from "./TracePanel";
+import type { Condition, Verdict } from "@/lib/verdict";
+import { Dock, useDismiss, useStickToBottom } from "./thread/Dock";
+import { groupTrace } from "./thread/group-trace";
+import { sourcesFromTrace } from "./thread/safe-url";
+import { Outline } from "./thread/Outline";
+import { Pane } from "./thread/Pane";
+import { Thread, type PaneState } from "./thread/Thread";
+import { TopBar } from "./shell/TopBar";
+import { IconArrowDown, IconPlus } from "./ui/icons";
 
 export interface SurfaceProps {
-  promise: { id: string; title: string; amountLabel: string; windowEndsAtIso: string; state: PromiseState; conditionKind: "none" | "price_at_most" | "page_contains" };
+  promise: { id: string; title: string; amountLabel: string; currency: string; windowEndsAtIso: string; state: PromiseState; conditionKind: "none" | "price_at_most" | "page_contains"; condition: Condition };
   approveUrl: string | null;
   log: { id: string; kind: string; attempt: number; createdAtIso: string }[];
   verdict: Verdict | null;
 }
-
-const TONE: Record<Verdict["kind"], string> = {
-  met: "border-emerald-500 text-emerald-700",
-  indeterminate: "border-amber-500 text-amber-700",
-  unmet: "border-red-500 text-red-700",
-};
 
 export function PromiseSurface(props: SurfaceProps) {
   const router = useRouter();
@@ -26,7 +27,13 @@ export function PromiseSurface(props: SurfaceProps) {
   const [verdict, setVerdict] = useState<Verdict | null>(props.verdict);
   const [state, setState] = useState<PromiseState>(props.promise.state);
   const [running, setRunning] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [pane, setPane] = useState<PaneState>({ kind: "closed" });
+  const [outline, setOutline] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false); // synchronous guard: a state flag is too slow for a fast double click
+  useDismiss(menuOpen, () => setMenuOpen(false), menuRef);
 
   const lastAttempt = Math.max(1, ...props.log.map((l) => l.attempt));
   const attempt = state === "declined" ? lastAttempt + 1 : lastAttempt;
@@ -42,6 +49,7 @@ export function PromiseSurface(props: SurfaceProps) {
     busy.current = true;
     setRunning(true);
     setTrace([]);
+    const t0 = performance.now();
     try {
       const res = await fetch("/api/promise", {
         method: "POST",
@@ -69,6 +77,8 @@ export function PromiseSurface(props: SurfaceProps) {
     } finally {
       busy.current = false;
       setRunning(false);
+      setElapsedMs(performance.now() - t0);
+      window.dispatchEvent(new Event("promises:changed"));
       router.refresh();
     }
   }
@@ -95,69 +105,112 @@ export function PromiseSurface(props: SurfaceProps) {
     const j = (await res.json()) as { error?: string };
     setManualMsg(res.ok ? "Saved. Settle again to use it." : (j.error ?? "failed"));
   }
-  return (
-    <div className="flex flex-col gap-6 md:flex-row">
-      <section className="min-w-0 flex-1 space-y-4">
-        <header>
-          <h1 className="text-xl font-semibold">{props.promise.title}</h1>
-          <p className="text-sm text-neutral-500">
-            {props.promise.amountLabel} · window ends {new Date(props.promise.windowEndsAtIso).toLocaleString()} · state <b>{state}</b>
-          </p>
-        </header>
 
-        <div className={`min-h-20 rounded border-l-4 bg-neutral-50 p-3 ${verdict ? TONE[verdict.kind] : "border-neutral-300 text-neutral-400"}`}>
-          {verdict ? (
-            <>
-              <div className="font-mono text-sm">{verdict.reason}</div>
-              <div className="text-xs">→ {verdict.consequence} · committed {verdict.diag.committedMinor} · observed {verdict.diag.observedMinor ?? "none"} (minor units)</div>
-            </>
-          ) : (
-            "No verdict yet."
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+  const view = useMemo(() => groupTrace(trace), [trace]);
+  const sources = useMemo(() => sourcesFromTrace(trace), [trace]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useStickToBottom(scroller, trace.length);
+  const statusLine = `${props.promise.amountLabel} · window ends ${new Date(props.promise.windowEndsAtIso).toLocaleString()} · ${state}`;
+  const manualInput = props.promise.conditionKind !== "none" && !done ? (
+    <div className="space-y-1">
+      <p className="text-[12px] text-fg-dim">If the vendors are down, enter what you saw ({props.promise.conditionKind === "price_at_most" ? "the price" : "the page text"}):</p>
+      <div className="flex gap-2">
+        <input value={manual} onChange={(e) => setManual(e.target.value)} aria-label="Manual evidence"
+          className="h-9 min-w-0 flex-1 rounded-full border border-line bg-canvas px-3 text-[13px] outline-none placeholder:text-fg-dim" />
+        <button onClick={saveManual} disabled={!manual} className="h-9 shrink-0 rounded-full border border-line px-3 text-[13px] text-fg-muted hover:bg-surface-2 disabled:opacity-50">Save</button>
+      </div>
+      {manualMsg && <p className="text-[12px] text-fg-muted">{manualMsg}</p>}
+    </div>
+  ) : undefined;
+  const dockMenu = (props.approveUrl && !done) || verdict ? (
+    <div ref={menuRef} className="relative">
+      <button type="button" aria-label="More actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}
+        className="grid size-10 place-items-center rounded-full text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg">
+        <IconPlus className="size-5" />
+      </button>
+      {menuOpen && (
+        <div className="absolute bottom-12 left-0 z-30 w-60 rounded-xl border border-line bg-surface p-1 shadow-2xl">
           {props.approveUrl && !done && (
-            <a href={props.approveUrl} className="rounded border border-neutral-300 px-3 py-2 text-sm">Approve in PayPal sandbox</a>
+            <a href={props.approveUrl} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg">
+              Approve in PayPal sandbox
+            </a>
           )}
-          <button onClick={settle} disabled={running || done} className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50">
-            {running ? "Settling…" : state === "capture_pending" ? "Check capture" : "Settle promise"}
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-xs">
           {verdict && (
-            <button onClick={runReplay} className="rounded border border-neutral-300 px-2 py-1">Replay verdict</button>
+            <button type="button" onClick={() => { setMenuOpen(false); void runReplay(); }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg">
+              Replay verdict
+            </button>
           )}
-          {replay && <span>{replay}</span>}
         </div>
+      )}
+    </div>
+  ) : null;
 
-        {props.promise.conditionKind !== "none" && !done && (
-          <div className="space-y-1 text-xs">
-            <p className="text-neutral-500">If the vendors are down, enter what you saw ({props.promise.conditionKind === "price_at_most" ? "the price" : "the page text"}):</p>
-            <div className="flex gap-2">
-              <input value={manual} onChange={(e) => setManual(e.target.value)} className="w-full rounded border border-neutral-300 px-2 py-1" />
-              <button onClick={saveManual} disabled={!manual} className="rounded border border-neutral-300 px-2 py-1 disabled:opacity-50">Save</button>
+  return (
+    <div className={`grid h-full min-h-0 ${pane.kind === "closed" ? "grid-cols-1" : "lg:grid-cols-2"}`} data-testid="surface">
+      <section className="relative flex min-h-0 min-w-0 flex-col">
+        <TopBar title={props.promise.title} onOutline={() => setOutline((o) => !o)} outlineOpen={outline} />
+        <div className="relative min-h-0 flex-1">
+          <div ref={scroller} onScroll={stick.onScroll} data-testid="thread" className="h-full overflow-y-auto">
+            <div className="mx-auto w-full max-w-[720px] space-y-6 px-6 pb-44 pt-6">
+              <Thread
+                promise={props.promise}
+                trace={trace}
+                log={props.log}
+                verdict={verdict}
+                running={running}
+                elapsedMs={elapsedMs}
+                approveUrl={props.approveUrl}
+                replay={replay}
+                onReplay={() => void runReplay()}
+                onOpenPane={(p) => { setPane(p); setOutline(false); }}
+                onShowSources={() => setOutline(true)}
+              />
             </div>
-            {manualMsg && <p>{manualMsg}</p>}
           </div>
-        )}
-
-        <div>
-          <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">Event log</h2>
-          {props.log.length === 0 && <p className="text-xs text-neutral-400">No events yet.</p>}
-          <ul className="text-xs">
-            {props.log.map((l) => (
-              <li key={l.id} className="flex gap-2 border-b border-neutral-100 py-1">
-                <code className="font-mono">{l.kind}</code>
-                <span className="text-neutral-400">attempt {l.attempt}</span>
-                <span className="ml-auto text-neutral-400">{new Date(l.createdAtIso).toLocaleTimeString()}</span>
-              </li>
-            ))}
-          </ul>
+          {stick.away && (
+            <button type="button" onClick={stick.jump} aria-label="Scroll to latest"
+              className="absolute bottom-4 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-line bg-surface text-fg-muted shadow-lg transition-colors hover:text-fg">
+              <IconArrowDown className="size-4" />
+            </button>
+          )}
         </div>
+        <div className="mx-auto w-full max-w-[720px] shrink-0 px-6 pb-5">
+          <Dock statusLine={running ? "Settling…" : statusLine} manual={manualInput} menu={dockMenu}
+            running={running} disabled={done} label={running ? "Settling" : state === "capture_pending" ? "Check capture" : "Settle promise"}
+            onSettle={() => void settle()} />
+        </div>
+        {outline && (
+          <Outline
+            groups={view.groups}
+            sources={sources}
+            approveUrl={props.approveUrl}
+            hasVerdict={!!verdict}
+            hasDiff={!!view.diff}
+            hasLog={props.log.length > 0}
+            onPickAgent={(id) => setPane({ kind: "agent", id })}
+            onPickArtifact={(which) => setPane({ kind: "artifact", which })}
+            onClose={() => setOutline(false)}
+          />
+        )}
       </section>
-      <TracePanel events={trace} />
+      {pane.kind !== "closed" && (
+        <>
+          <button type="button" aria-label="Close pane" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setPane({ kind: "closed" })} />
+          <div className="fixed inset-0 z-50 p-2 lg:static lg:z-auto lg:p-5">
+            <Pane
+              pane={pane}
+              groups={view.groups}
+              view={view}
+              promise={props.promise}
+              log={props.log}
+              verdict={verdict}
+              approveUrl={props.approveUrl}
+              onClose={() => setPane({ kind: "closed" })}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
