@@ -46,3 +46,17 @@ overrides. Everything else in `.devin/rules/*` still binds.
   files only, not for money-path or agent code.
 - **O3 — A source file and its own `*.test.ts` count as one file** toward the "2 files per slice" cap.
 - **O4 — CSS-only motion up to 200ms** (disclosure, drawer, pulse). No JS animation, no animation library.
+
+## 6. D-BROWSE: Promise Browser overrides (authorized 2026-11-08)
+
+The owner asked for an agentic browser (Comet-style, live in the UI) that pays through Standing Promises, CrawlerPal-style.
+Three narrow overrides; everything else in `.devin/rules/*` still binds.
+
+- **O5 — One extra browser origin, at runtime only.** The page may embed the KERNEL live view (`*.kernel.sh`, `*.onkernel.com`)
+  in an iframe. The URL comes from the server and passes `safeLiveViewUrl` (https + host allowlist) before it reaches `src`;
+  no source file names the host (the `no-external-origins` test stays untouched). Read-only by default, "Take over" is explicit.
+- **O6 — The dev server may sit behind a free quick tunnel.** A cloud browser cannot reach `localhost`, so `PUBLIC_URL` points at
+  the tunnel (trycloudflare). Sandbox money only. While the tunnel runs, `/api/promise` is publicly writable: stop the tunnel when not demoing.
+- **O7 — Credentials never reach a model.** The PayPal sandbox buyer login is scripted server code (`PAYPAL_SANDBOX_BUYER_*` via
+  `getEnv`), run on the live browser so it is visible, but the LLM only sees "approval done". Payment is always a Standing Promise
+  (create -> approve -> settle); the verdict stays `computeVerdict`, and the agent can never call or influence it.
