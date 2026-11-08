@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { PromiseState } from "@/db/schema";
-import { IconBoard, IconClock, IconPlus, IconSearch } from "@/components/ui/icons";
+import { IconAgent, IconBoard, IconClock, IconPlus, IconSearch } from "@/components/ui/icons";
 
 interface Item { id: string; title: string; state: PromiseState; createdAt: string }
 interface Cap { id: string; on: boolean; note: string }
@@ -17,6 +17,7 @@ const DOT: Record<PromiseState, string> = {
 };
 const NAV = [
   { href: "/", label: "New promise", Icon: IconPlus },
+  { href: "/ask", label: "Ask", Icon: IconAgent },
   { href: "/board", label: "Dashboard", Icon: IconBoard },
   { href: "/timeline", label: "Timeline", Icon: IconClock },
 ] as const;

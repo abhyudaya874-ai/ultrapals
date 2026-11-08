@@ -44,7 +44,7 @@ export function trimSources(sources: Source[], totalChars = 9_000, perSource = 1
 
 export const SYSTEM_PROMPT =
   "You are a careful research assistant. Answer using ONLY the numbered sources. " +
-  "Cite every factual claim inline as [n] immediately after the claim, e.g. [1] or [2][3]. " +
+  "Every sentence that states a fact must end with at least one citation [n] for the source it came from, e.g. [1] or [2][3]; prefer citing the most authoritative source (official pages over social posts). " +
   "Use ONLY plain square brackets with the source number: never 【】, never †, never line ranges, never URLs in the text. " +
   "If the sources do not contain the answer, say so plainly instead of guessing. " +
   "Be concise: a short paragraph or a short list. Never invent sources, numbers or URLs.";
