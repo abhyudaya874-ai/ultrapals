@@ -65,13 +65,23 @@ export async function execInVm(vm: string, command: string, timeoutSec = 90): Pr
   });
 }
 
-/** Starts a long-running server detached and waits until the port answers, so the live browser can open http://localhost:<port>. */
+/**
+ * Starts a long-running server detached and waits until the port answers, so the live browser can open http://localhost:<port>.
+ * The result shows what `GET /` actually returns (so a directory listing is visible, not mistaken for the app) and refuses a
+ * port that is already serving, so an agent cannot "restart" the same server in a loop.
+ */
 export async function serveInVm(vm: string, command: string, port: number): Promise<AdapterResult<ExecResult>> {
   if (!isOn("kernel")) return degrade("kernel off");
   if (!Number.isInteger(port) || port < 1024 || port > 65535) return degrade("port must be 1024-65535");
   return guard("kernel", async () => {
     const log = `/tmp/serve-${port}.log`;
-    const script = `mkdir -p ${WORKDIR}; cd ${WORKDIR}; (setsid nohup bash -lc ${shq(command)} > ${log} 2>&1 &); for i in $(seq 1 40); do if curl -s -m 2 -o /dev/null http://localhost:${port}/; then echo "listening on :${port}"; tail -n 5 ${log}; exit 0; fi; sleep 0.75; done; echo "not listening on :${port} after 30s"; tail -n 30 ${log}; exit 1`;
+    const probe = `$(curl -s -m 2 http://localhost:${port}/ | tr -s '[:space:]' ' ' | head -c 200)`;
+    const script =
+      `mkdir -p ${WORKDIR}; ` +
+      `if curl -s -m 2 -o /dev/null http://localhost:${port}/; then echo "port ${port} is ALREADY serving: GET / -> ${probe}"; echo "use another port, or free it first: pkill -f 'http.server ${port}'"; exit 3; fi; ` +
+      `cd ${WORKDIR}; (setsid nohup bash -lc ${shq(command)} > ${log} 2>&1 &); ` +
+      `for i in $(seq 1 40); do if curl -s -m 2 -o /dev/null http://localhost:${port}/; then echo "listening on :${port} (started from ${WORKDIR} unless the command cd's)"; echo "GET / -> ${probe}"; exit 0; fi; sleep 0.75; done; ` +
+      `echo "not listening on :${port} after 30s"; tail -n 30 ${log}; exit 1`;
     return { ok: true, data: await sh(vm, script, 60, "/") };
   });
 }
