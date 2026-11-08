@@ -3,8 +3,6 @@ import { IconX } from "@/components/ui/icons";
 import { safeHttpUrl } from "@/components/thread/safe-url";
 import type { Source } from "@/lib/research/sources";
 
-export type SourcePaneState = { kind: "closed" } | { kind: "list"; turnId: string } | { kind: "source"; turnId: string; n: number };
-
 function Card({ s, active, onPick }: { s: Source; active: boolean; onPick: (n: number) => void }) {
   const href = safeHttpUrl(s.url);
   return (

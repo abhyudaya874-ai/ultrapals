@@ -7,7 +7,7 @@ One contract for all of them: `AdapterResult`, always through `guard()`, behind 
 |---|---|---|---|---|---|---|
 | **AG Studio** (AG Grid) | `/board` dashboard; 2 custom widgets; agent | `AgStudio` + `createWidgets` custom widgets with `dataMapping`; `createAiHarness` + `directLlmRunner` with our own tested `chatAdapter`; `api.defineAiTool` | trace page | `CAP_STUDIO` | "ask the analyst why this was released" | Best Use of AG Grid: custom widgets + theming + Agent Framework (a custom agent next to the built-in lead) |
 | **Channel3** | resolves `price_at_most` conditions | `POST /v1/search` (`x-api-key`) → cheapest in-stock offer → `ProductFact` | manual price entry → else WAIT | `CAP_CHANNEL3` | create "Nike Pegasus under 120" | must be a meaningful API call: it is the evidence for a captured payment |
-| **KERNEL** | browser read + replay evidence | `@onkernel/sdk`: `browsers.create` → `replays.start` → `playwright.execute` → `replays.stop` → `deleteByID` | plain `fetch` (SSRF-guarded) | `CAP_KERNEL` | open the replay link: "the actual page" | live agent infra with replay |
+| **KERNEL** | browser read + replay evidence; **Computer agent's cloud VM** (live Chromium + shell, one VM per session) | `@onkernel/sdk`: `browsers.create` → `replays.start` → `playwright.execute` → `replays.stop` → `deleteByID`; live view: `browser_live_view_url` iframe (O5), `browsers.computer` mouse/keyboard, process API for the terminal | plain `fetch` (SSRF-guarded) | `CAP_KERNEL` | open the replay link: "the actual page"; watch the agent's cursor drive the live browser | live agent infra with replay |
 | **Elastic** | precedent + analytics | Jina embeddings via EIS (`semantic_text`), hybrid RRF retriever, ES\|QL `/_query`, Agent Builder tool | no precedent clause | `CAP_ELASTIC` | "2 of 3 similar promises ended UNMET" | multi-step agent using Elasticsearch + Jina |
 | **Bryntum** | `/timeline` | `BryntumScheduler` resources=payers, events=promises; drag → `reschedule` | event log table | `CAP_BRYNTUM` | drag a bar, due date moves | "subscription revenue radar" style scheduler with failed/refund markers |
 | **Astropods** | hosted **Promise concierge** agent (web UI on port 80) that calls our read-only endpoints; model from the AI Gateway | `astropods.yml` (`spec: blueprint/v1`), `ast blueprint push/deploy`; agent → `/api/verdict/replay`, `/api/studio/query` | no link on the home page | `CAP_ASTROPODS` | "ask the concierge why this was released"; Astropods dashboard screenshot | agent OS: a deployed, monitored agent |
@@ -15,6 +15,18 @@ One contract for all of them: `AdapterResult`, always through `guard()`, behind 
 | **Zapier** | friendly nudges | Zapier MCP (Streamable HTTP) via `@modelcontextprotocol/sdk`; tool arguments built from the tool's own input schema (`instructions` always) | in-app banner | `CAP_ZAPIER` | email arrives: "hey, just a heads-up!" | the "nudge-bot" idea from the AG Grid brief |
 | **APIMatic** | build-time | `npx context-plugins install paypal`; verify `lib/paypal.ts` against it | n/a | n/a | the `docs/APIMATIC-LOG.md` trail | free months for using the plugin |
 | **Postman** | build-time + CI | collection with tests, mock server, monitor, `newman` | n/a | n/a | green monitor screenshot | API quality |
+
+## The Computer agent's own stack (not sponsors — free tiers, all degradable)
+
+| Provider | Slot | Method | Off / degraded | Flag |
+|---|---|---|---|---|
+| **Tavily** | web search, run in parallel with Exa | `POST api.tavily.com/search` (`api_key` body) | that provider's results missing, answer still cites what arrived | `CAP_TAVILY` |
+| **Exa** | web search, run in parallel with Tavily | `POST api.exa.ai/search` (`x-api-key`, `contents.highlights`) | same | `CAP_EXA` |
+| **Groq** | primary free LLM (chat + agent action loops) | OpenAI-compatible `POST api.groq.com/openai/v1/chat/completions`, streamed | rotation falls through to OpenRouter | `CAP_GROQ` |
+| **OpenRouter** | fallback free LLM — `:free` suffix enforced in code, a paid model can never be requested | same shape, `openrouter.ai/api/v1` | agent reports the error inline | `CAP_OPENROUTER` |
+
+Free-plan limits are real (Groq ≈30 RPM / 8K TPM per model): `lib/computer/model.ts` rotates models and cools a
+model down after 429; `lib/research/rate-limit.ts` caps requests per client. Keys live only in `.env.local`.
 
 ## Why the verdict never imports an adapter
 

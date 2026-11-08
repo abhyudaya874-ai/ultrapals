@@ -1,11 +1,14 @@
 # BACKLOG
 
 ## Now
+- [x] Computer agent (Perplexity-Computer shell + unified agent): dark shell/sidebar/thread/dock/panes; `lib/computer` main→research/browser/terminal subagents on one KERNEL VM; Groq+OpenRouter free models with rotation; Tavily+Exa parallel with inline citations; `/api/agent` SSE; agent panel (Ctrl+L), selection "Add to chat", workspace pane (live browser/terminal/files/sources); `/ask` folded in
+- [ ] C7 promise subagent + CrawlerPal newsroom paywall (402 → approve → unlock) — payment through Standing Promise, scripted sandbox approval
+- [ ] C8 docs + live rehearsal through the quick tunnel (`PUBLIC_URL`)
+- [ ] P4 zapier nudge: code ready, BLOCKED on ZAPIER_MCP_TOKEN (needs user's Zapier MCP endpoint)
 - [x] P1 bootstrap done (commit f848253): verify green, dev on :3001, caps studio/channel3/kernel/bryntum on
 - [x] P2 money path done: create->approve->settle->CAPTURE->1 row, dedup, replay identical, expiry RELEASE (commits cb3b7ef, 4cc9e1a)
 - [x] P3 world done: channel3 schema fixed to live shape, CONDITION_MET/PENDING/UNMET all proven, CAP_CHANNEL3=0 -> FACT_MISSING, manual fallback, page_contains via KERNEL, approvals automated (scripts/kapprove.mjs)
 - [x] P4 surfaces mostly done: /board prewired (pill+scoreboard+still-to-come+grid+chart), /api/studio/paypal live, still-to-come widget + copy test, CAP_STUDIO=0 -> [] + x-degraded proven, bryntum fontawesome fixed
-- [ ] P4 zapier nudge: code ready, BLOCKED on ZAPIER_MCP_TOKEN (needs user's Zapier MCP endpoint)
 
 ## Next
 - [ ] Day 2: settle happy path with a real sandbox buyer approval

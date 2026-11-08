@@ -60,3 +60,24 @@ Three narrow overrides; everything else in `.devin/rules/*` still binds.
 - **O7 — Credentials never reach a model.** The PayPal sandbox buyer login is scripted server code (`PAYPAL_SANDBOX_BUYER_*` via
   `getEnv`), run on the live browser so it is visible, but the LLM only sees "approval done". Payment is always a Standing Promise
   (create -> approve -> settle); the verdict stays `computeVerdict`, and the agent can never call or influence it.
+
+## 7. D-COMPUTER: one agent, not modes (authorized 2026-11-08)
+
+The owner asked for a Perplexity-Computer surface: "I don't want ask mode as a standalone feature… all must be
+connected." Consequences recorded so the structure is not re-litigated:
+
+- **One chat, one endpoint.** `POST /api/agent` streams `CEvent`s for every request; `AgentProvider` lives in
+  `AppShell` so the same conversation follows the user across `/`, `/p`, `/board`, `/timeline`. The earlier
+  standalone `/ask` page, `components/ask/*` and `POST /api/research` were removed; their pure parts
+  (`lib/research/*`, `AnswerText`, `SourcePane`) moved under `components/agent/`.
+- **Screen context, not screen scraping.** The client sends `path`; on `/p?id=` the server adds the promise's
+  stored facts (title, amount, state, condition, latest verdict, event kinds) as read-only `pageContext`.
+  Selected text arrives as capped `attachments`. Nothing else on screen is captured.
+- **Subagents are workers, not products.** research/browser/terminal run inside `runMain` on one shared KERNEL
+  VM; they emit the same `CEvent` stream and report back to the main agent as messages. No subagent has its own
+  route, page or session.
+- **Free models only, enforced.** OpenRouter calls require the `:free` suffix (`isFreeModel`); Groq uses its
+  free-tier chat models. Rotation + 429 cooldown live in `lib/computer/model.ts`.
+- **The agent still cannot touch money.** It has no write tool; PayPal actions stay on the promise path
+  (create/approve/settle via `/api/promise`). A future paywall beat (CrawlerPal-style 402) must route payment
+  through a Standing Promise — never a direct capture.

@@ -68,6 +68,44 @@ Generated from the real code, then annotated. If you add an export, add it here 
 | `zapier.ts` | `buildNudge(n)` (pure), `buildToolArgs(schemaProps, n)` (pure), `needsFollowUp(text)` (pure), `sendNudge(n)` | reads the tool's input schema at call time |
 | `render.ts` | `startSweep()` | |
 | `bryntum.ts` | `TimelineRow`, `SchedulerData`, `toScheduler(rows)` (pure) | |
+| `tavily.ts` | `parseTavily(body): WebSource[]` (pure), `tavilySearch(query, signal?, maxResults?)` | `POST api.tavily.com/search` |
+| `exa.ts` | `parseExa(body): WebSource[]` (pure), `exaSearch(query, signal?, numResults?)` | `POST api.exa.ai/search`, `contents.highlights` |
+| `chat.ts` | `GROQ_FREE_MODELS`, `OPENROUTER_FREE_MODELS`, `isFreeModel`, `parseChatSse`, `openChat`, `readDeltas` | OpenAI-compatible stream; `:free` suffix enforced for OpenRouter |
+| `kbrowser.ts` | `LiveBrowser`, `VIEWPORT`, `parseSnapshot`, `toScreen`, `openBrowser`, `closeBrowser`, `snapshotPage`, `gotoUrl`, `clickElement`, `typeInto`, `scrollPage`, `pressKey` | KERNEL cloud Chromium; calibrated coords; cursor is real |
+| `kterm.ts` | `WORKDIR`, `ExecResult`, `clipOutput`, `workPath`, `lineDiffStats`, `execInVm`, `serveInVm`, `writeFileInVm`, `readFileInVm` | same KERNEL VM as kbrowser; paths jailed to `/workspace` |
+| `paypal-activity.ts` | PayPal activity rows for Studio (uniform fields) | read-only |
+
+## Research (`lib/research/`)
+
+| File | Exports | Notes |
+|---|---|---|
+| `sources.ts` | `Source`, `hostOf`, `canonicalUrl`, `mergeSources`, `trimSources`, `SYSTEM_PROMPT`, `buildMessages` | dedupe + ranking across providers |
+| `run.ts` | `ResearchEvent`, `Deps`, `defaultDeps`, `research(question, signal?, deps?)` | Tavily + Exa in parallel, then free-model answer with `[n]` cites |
+| `citations.ts` | `Segment`, `segmentCitations`, `usedSources` | `【n】`/`[n]` → inline chips; pure |
+| `rate-limit.ts` | `allow(key, nowMs, limit?, windowMs?)`, `resetRateLimit` | shared free-tier protection |
+
+## Computer agent (`lib/computer/`)
+
+The unified agent behind `POST /api/agent` (SSE `CEvent`s). One main agent delegates to research/browser/terminal
+subagents that share one KERNEL VM. It gathers and acts; it never sees `computeVerdict` and never touches money —
+promise data arrives as read-only `pageContext` (`context.ts`).
+
+| File | Exports | Notes |
+|---|---|---|
+| `events.ts` | `AgentRole`, `RunState`, `Attachment`, `CEvent` | the whole UI contract |
+| `run.ts` | `Run`, `AgentRow`, `Step`, `TermBlock`, `FileEdit`, `Message`, `TimelineItem`, `newRun`, `applyCEvent`, `parseCStream`, `subagents` | pure reducer for the client |
+| `model.ts` | `ModelRef`, `ModelDeps`, `defaultModelDeps`, `orderModels`, `callModel`, `resetCooldowns` | free-model rotation + 429 cooldown |
+| `session.ts` | `Session`, `HistoryTurn`, `getSession`, `endSession`, `hasSession`, `mergeInto`, `remapCitations`, `pushHistory` | per-VM session, history, shared sources |
+| `ctx.ts` | `Deps`, `SubCtx`, `defaultDeps`, `ensureVm` | one VM opened lazily, shared by browser+terminal |
+| `main-actions.ts` | `MainAction`, `parseMainAction`, `MAIN_SYSTEM`, `mainPrompt` | delegate / answer JSON loop |
+| `main-agent.ts` | `runMain(session, input, deps, signal?)` | orchestrator; only voice the user hears |
+| `research-agent.ts` | `runResearchAgent(ctx, task)` | wraps `lib/research/run` |
+| `browser-agent.ts` | `runBrowserAgent(ctx, task)` | snapshot → action loop on the live VM browser |
+| `terminal-agent.ts` | `runTerminalAgent(ctx, task)` | run/write/read/serve loop in `/workspace` |
+| `term-actions.ts` | `TermAction`, `parseTermAction`, `describeTerm`, `TERM_SYSTEM`, `buildTermMessages` | |
+| `repeat.ts` | `Repeat`, `repeatState`, `REPEAT_NOTE` | loop guard for all action loops |
+| `context.ts` | `PromiseFacts`, `promiseIdFromPath`, `formatPromiseContext`, `loadPageContext` | read-only `/p?id=` context |
+| `browse/` (`lib/browse/`) | `actions.ts` (`Action`, `parseAction`, `extractJson`, `describeAction`), `snapshot.ts` (`El`, `Snapshot`, `renderElements`, `BROWSE_SYSTEM`, `buildBrowseMessages`), `live-view.ts` (`safeLiveViewUrl`, `liveViewSrc`) | browser-agent prompt + iframe URL guard |
 
 ## UI (`components/`, `app/`)
 
@@ -79,7 +117,12 @@ Generated from the real code, then annotated. If you add an export, add it here 
 `thread/format` (`formatDuration`) · `thread/reason-copy` (`REASON_SENTENCE`) · `thread/describe-condition` · `thread/safe-url` (`safeHttpUrl`, `hostLabel`, `sourcesFromTrace`) ·
 `TracePanel` (`TraceRow` single row switch + `TracePanel` fallback aside) · `ui/Disclosure` · `ui/icons` (24 inline SVGs) ·
 `PromiseTimeline` (Bryntum `svalbard-dark`, client only) · `studio/StudioBoard` (AG Studio in paper frame), `studio/registry` (`widgets`), `studio/agent` (`buildAi(adapter)`), `studio/chat-adapter` (`chatAdapter`, `toChatMessages`, `toChatTools`, `toToolChoice`, `parseDataLines`, `ChatStreamAccumulator`),
-`studio/widgets/{verdict-pill,scoreboard}` · pages: `/` `/p` `/board` `/timeline`.
+`studio/widgets/{verdict-pill,scoreboard}` ·
+`agent/AgentProvider` (client state: runs, SSE consume, session id, workspace tabs, attachments) ·
+`agent/AgentPanel` (the one chat, Ctrl+L, dock) · `agent/RunView` (prompt card, process disclosure, thinking, agent rows, files card, cited answer, chips) ·
+`agent/Workspace` (big pane: live browser iframe + Take over, terminal blocks, files, sources, agent detail) ·
+`agent/SelectionPopover` ("Add to chat" on text selection) · `agent/{AnswerText,SourcePane}` ·
+pages: `/` `/p` `/board` `/timeline`. The standalone `/ask` surface was folded into this agent.
 
 ## Other
 
@@ -92,6 +135,8 @@ lib/verdict.ts         -> (nothing)
 lib/money.ts, sse.ts   -> types only
 lib/integrations/*     -> lib/env, lib/money, lib/verdict (TYPES), registry/types. Never db, never lib/agent
 lib/agent/*            -> lib/integrations, lib/events, lib/llm, db, lib/verdict (TYPES ONLY, never computeVerdict)
+lib/computer/*         -> lib/integrations (kbrowser/kterm/chat/tavily/exa), lib/research, lib/browse, db (read-only context). Never lib/verdict, never a write endpoint
+lib/research/*         -> lib/integrations (tavily/exa/chat), lib/computer/model is NOT used here (own loop)
 lib/capture.ts         -> db, lib/events, lib/paypal, lib/agent/trace
 app/api/promise/route  -> everything above; it is the only caller of computeVerdict
 components/*           -> lib/sse, lib/money, types. Never db, never lib/integrations (except pure bryntum.ts)

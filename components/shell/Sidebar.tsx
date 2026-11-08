@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { PromiseState } from "@/db/schema";
+import { useAgent } from "@/components/agent/AgentProvider";
 import { IconAgent, IconBoard, IconClock, IconPlus, IconSearch } from "@/components/ui/icons";
 
 interface Item { id: string; title: string; state: PromiseState; createdAt: string }
@@ -17,7 +18,6 @@ const DOT: Record<PromiseState, string> = {
 };
 const NAV = [
   { href: "/", label: "New promise", Icon: IconPlus },
-  { href: "/ask", label: "Ask", Icon: IconAgent },
   { href: "/board", label: "Dashboard", Icon: IconBoard },
   { href: "/timeline", label: "Timeline", Icon: IconClock },
 ] as const;
@@ -53,6 +53,7 @@ export function Sidebar() {
 
   const shown = useMemo(() => (items ?? []).filter((i) => i.title.toLowerCase().includes(q.trim().toLowerCase())), [items, q]);
   const row = "flex h-10 items-center gap-3 rounded-lg px-3 text-[14px]";
+  const { open: agentOpen, toggle } = useAgent();
   const onCount = caps?.filter((c) => c.on).length ?? 0;
 
   return (
@@ -72,6 +73,11 @@ export function Sidebar() {
             </Link>
           </li>
         ))}
+        <li>
+          <button type="button" data-testid="open-agent" onClick={() => toggle()} aria-pressed={agentOpen} className={`${row} w-full ${agentOpen ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>
+            <IconAgent className="size-[18px]" />Computer<kbd className="ml-auto font-sans text-[11px] text-fg-dim">Ctrl+L</kbd>
+          </button>
+        </li>
       </ul>
       <h2 className="px-5 pb-1 pt-5 text-[12px] font-medium uppercase tracking-wide text-fg-dim">Promises</h2>
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2" data-testid="recents">

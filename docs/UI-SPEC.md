@@ -42,6 +42,33 @@ sidebar │ topbar: title · outline · copy link
 `TraceRow` (`components/TracePanel.tsx`) is the single row renderer reused by the process list, agent pane
 and log views. `sourcesFromTrace` extracts http(s) args from tool events for the sources count and outline.
 
+## Computer agent (`components/agent/`) — the one chat, everywhere
+
+`AgentProvider` (inside `AppShell`, so it follows every page) owns runs, the SSE consume, the session id
+(`sessionStorage["sp-agent-session"]`), workspace tabs and text-selection attachments. `Ctrl+L` toggles the
+panel (sidebar "Computer" row on touch), `Esc` closes it while the dock is focused. `POST /api/agent` streams
+`CEvent`s; `lib/computer/run.ts` reduces them into `Run`s — pure, tested.
+
+```
+sidebar │ agent panel (440px, fixed sheet <lg)     workspace (over the page column, <lg fullscreen)
+        │   header: Computer · working/ready · new · close
+        │   thread: prompt card (+ selection quotes) · process Disclosure (agent rows → workspace)
+        │           · Thinking Disclosure · files card · serif AnswerText with [n] cite chips
+        │           · chips row: N sources · Browser · N commands
+        │   dock:    rounded-dock teal pill, attachments row, textarea, send/stop
+        │ workspace tabs: Browser | Terminal | Files | Sources N | Agent
+        │   Browser   live KERNEL iframe (read-only; "Take over" posts KERNEL_SET_READ_ONLY), url bar, page events
+        │   Terminal  every term block: $ command, state dot, exit, ms, capped output
+        │   Files     every file edit: path, +adds −removes, expandable preview
+        │   Sources   SourcePane cards (same as before)
+        │   Agent     one subagent's steps/reasoning/terms/files
+```
+
+Selection: selecting ≥2 chars of page text shows an "Add to chat" pill (`Ctrl+L` does the same); the text +
+its route become an attachment chip in the dock, capped at 5. On `/p` the route also gives the agent the
+promise's stored facts as read-only context. Workspace auto-opens on the first `workspace` event (live view
+URL) and stays open across runs; `DELETE /api/agent?sessionId=` (New chat) ends the session and its VM.
+
 ## Trace grammar (unchanged semantics, dark tokens)
 
 | Event | Visual |
