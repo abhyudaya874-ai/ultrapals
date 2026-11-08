@@ -4,6 +4,7 @@ import { promise, promiseEvent } from "@/db/schema";
 import { formatMajor } from "@/lib/money";
 
 export interface VerdictRow {
+  id: string; // the verdict event id: unique per row — Studio keys rows by it, promiseId alone collides after a re-settle
   promiseId: string;
   payer: string;
   title: string;
@@ -21,6 +22,7 @@ export interface VerdictRow {
 export async function queryVerdictRows(limit: number): Promise<VerdictRow[]> {
   const rows = await getDb()
     .select({
+      id: promiseEvent.id,
       promiseId: promise.id,
       payer: promise.payerName,
       title: promise.title,
