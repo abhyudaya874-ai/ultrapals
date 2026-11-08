@@ -53,7 +53,7 @@ const initialState = {
 
 export function StudioBoard() {
   const [rows, setRows] = useState<unknown[] | null>(null);
-  const [ppal, setPpal] = useState<unknown[]>([]);
+  const [ppal, setPpal] = useState<unknown[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,10 +73,12 @@ export function StudioBoard() {
   }, []);
 
   const ai = useMemo(() => (AI_ON ? buildAi(chatAdapter({ endpoint: "/api/studio/llm", model: MODEL })) : undefined), []);
-  const data = useMemo(() => ({ sources: [{ id: "verdicts", data: rows ?? [] }, { id: "paypal", data: ppal }] }), [rows, ppal]);
+  const data = useMemo(() => ({ sources: [{ id: "verdicts", data: rows ?? [] }, { id: "paypal", data: ppal ?? [] }] }), [rows, ppal]);
 
   if (error) return <p className="p-4 text-[13px] text-bad">Could not load verdicts: {error}</p>;
-  if (!rows) return <div className="h-full animate-pulse rounded-card bg-surface-2" />;
+  // Mount only when both sources have answered: an empty paypal array at mount leaves w3's fields
+  // invalid until the late data lands. The endpoint degrades to [] quickly, so this rarely waits.
+  if (!rows || ppal === null) return <div className="h-full animate-pulse rounded-card bg-surface-2" />;
   return (
     <AgStudioProvider licenseKey={process.env.NEXT_PUBLIC_AG_STUDIO_KEY ?? ""} modules={[AgStudioAiModule]}>
       {/* AG Studio ships no dark theme (createStudioTheme() takes no params): paper frame per UI spec, tracked in BACKLOG. */}
