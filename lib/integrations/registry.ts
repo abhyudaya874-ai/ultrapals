@@ -1,7 +1,7 @@
 import { getEnv, type Env } from "@/lib/env";
 import type { AdapterResult } from "./types";
 
-export const CAPABILITY_IDS = ["studio", "channel3", "kernel", "elastic", "bryntum", "astropods", "zapier", "render"] as const;
+export const CAPABILITY_IDS = ["studio", "channel3", "kernel", "elastic", "bryntum", "astropods", "zapier", "render", "groq", "openrouter", "tavily", "exa"] as const;
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
 
 interface Capability {
@@ -18,6 +18,10 @@ const CAPABILITIES: Record<CapabilityId, Capability> = {
   astropods: { on: (e) => e.CAP_ASTROPODS && !!e.ASTROPODS_AGENT_URL, note: "link to the hosted Promise concierge agent; off = no link" },
   zapier: { on: (e) => e.CAP_ZAPIER && (!!e.ZAPIER_MCP_TOKEN || !!e.ZAPIER_MCP_URL), note: "email nudges; off = in-app banner" },
   render: { on: (e) => e.CAP_RENDER && !!e.RENDER_API_KEY, note: "durable sweep tasks; off = settle in-request only" },
+  groq: { on: (e) => e.CAP_GROQ && !!e.GROQ_API_KEY, note: "fast free-tier answers + reasoning; off = OpenRouter free, else no answer" },
+  openrouter: { on: (e) => e.CAP_OPENROUTER && !!e.OPENROUTER_API_KEY, note: "free-only (:free) model fallback; off = Groq only" },
+  tavily: { on: (e) => e.CAP_TAVILY && !!e.TAVILY_API_KEY, note: "web search with snippets; off = Exa only" },
+  exa: { on: (e) => e.CAP_EXA && !!e.EXA_API_KEY, note: "semantic web search with highlights; off = Tavily only" },
 };
 
 export function isOn(id: CapabilityId): boolean {

@@ -25,6 +25,10 @@ const Schema = z.object({
   CAP_ASTROPODS: flag,
   CAP_ZAPIER: flag,
   CAP_RENDER: flag,
+  CAP_GROQ: flag,
+  CAP_OPENROUTER: flag,
+  CAP_TAVILY: flag,
+  CAP_EXA: flag,
 
   // --- vendor credentials (all optional: a missing key means that capability is off) ---
   CHANNEL3_API_KEY: opt(),
@@ -39,6 +43,10 @@ const Schema = z.object({
   RENDER_WORKFLOW_TASK: blank(z.string().default("standing-promise-cycles/sweep")),
   STUDIO_LLM_BASE_URL: blank(z.string().url().optional()), // any OpenAI-compatible chat-completions base, e.g. https://api.openai.com/v1
   STUDIO_LLM_API_KEY: opt(),
+  GROQ_API_KEY: opt(),
+  OPENROUTER_API_KEY: opt(),
+  TAVILY_API_KEY: opt(),
+  EXA_API_KEY: opt(),
 });
 
 export type Env = z.infer<typeof Schema>;
