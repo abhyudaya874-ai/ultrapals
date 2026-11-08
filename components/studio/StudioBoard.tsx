@@ -75,12 +75,15 @@ export function StudioBoard() {
   const ai = useMemo(() => (AI_ON ? buildAi(chatAdapter({ endpoint: "/api/studio/llm", model: MODEL })) : undefined), []);
   const data = useMemo(() => ({ sources: [{ id: "verdicts", data: rows ?? [] }, { id: "paypal", data: ppal }] }), [rows, ppal]);
 
-  if (error) return <p className="p-4 text-red-600">Could not load verdicts: {error}</p>;
-  if (!rows) return <p className="p-4 text-neutral-500">Loading…</p>;
+  if (error) return <p className="p-4 text-[13px] text-bad">Could not load verdicts: {error}</p>;
+  if (!rows) return <div className="h-full animate-pulse rounded-card bg-surface-2" />;
   return (
     <AgStudioProvider licenseKey={process.env.NEXT_PUBLIC_AG_STUDIO_KEY ?? ""} modules={[AgStudioAiModule]}>
-      <div className="h-[calc(100vh-3.5rem)] w-full">
-        <AgStudio data={data} widgets={widgets} mode="edit" ai={ai} initialState={initialState} />
+      {/* AG Studio ships no dark theme (createStudioTheme() takes no params): paper frame per UI spec, tracked in BACKLOG. */}
+      <div className="h-full overflow-auto rounded-2xl bg-white p-2">
+        <div className="h-full w-full">
+          <AgStudio data={data} widgets={widgets} mode="edit" ai={ai} initialState={initialState} />
+        </div>
       </div>
     </AgStudioProvider>
   );
