@@ -32,8 +32,10 @@ export function PromiseSurface(props: SurfaceProps) {
   const [outline, setOutline] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false); // synchronous guard: a state flag is too slow for a fast double click
   useDismiss(menuOpen, () => setMenuOpen(false), menuRef);
+  useDismiss(pane.kind !== "closed", () => setPane({ kind: "closed" }), paneRef);
 
   const lastAttempt = Math.max(1, ...props.log.map((l) => l.attempt));
   const attempt = state === "declined" ? lastAttempt + 1 : lastAttempt;
@@ -195,9 +197,7 @@ export function PromiseSurface(props: SurfaceProps) {
         )}
       </section>
       {pane.kind !== "closed" && (
-        <>
-          <button type="button" aria-label="Close pane" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setPane({ kind: "closed" })} />
-          <div className="fixed inset-0 z-50 p-2 lg:static lg:z-auto lg:p-5">
+        <div ref={paneRef} className="fixed inset-0 z-50 bg-canvas p-2 lg:static lg:z-auto lg:bg-transparent lg:p-5">
             <Pane
               pane={pane}
               groups={view.groups}
@@ -209,7 +209,6 @@ export function PromiseSurface(props: SurfaceProps) {
               onClose={() => setPane({ kind: "closed" })}
             />
           </div>
-        </>
       )}
     </div>
   );
