@@ -8,7 +8,7 @@ import { allow } from "@/lib/research/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 600; // paywall unlocks run create -> live approval -> settle -> browser read; 300s was not enough
 
 const Body = z.object({
   sessionId: z.string().uuid().optional(),

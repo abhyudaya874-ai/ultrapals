@@ -105,7 +105,24 @@ promise data arrives as read-only `pageContext` (`context.ts`).
 | `term-actions.ts` | `TermAction`, `parseTermAction`, `describeTerm`, `TERM_SYSTEM`, `buildTermMessages` | |
 | `repeat.ts` | `Repeat`, `repeatState`, `REPEAT_NOTE` | loop guard for all action loops |
 | `context.ts` | `PromiseFacts`, `promiseIdFromPath`, `formatPromiseContext`, `loadPageContext` | read-only `/p?id=` context |
+| `promise-agent.ts` | `runPromiseAgent(ctx, task)` | unlocks premium Newsroom articles: match → create promise → approve order on live VM → settle → return unlock URL |
+| `promise-ops.ts` | `createPromise`, `settlePromise`, `promiseInfo`, `findPromises` | self-calls `/api/promise` ops over HTTP (never `computeVerdict`) |
 | `browse/` (`lib/browse/`) | `actions.ts` (`Action`, `parseAction`, `extractJson`, `describeAction`), `snapshot.ts` (`El`, `Snapshot`, `renderElements`, `BROWSE_SYSTEM`, `buildBrowseMessages`), `live-view.ts` (`safeLiveViewUrl`, `liveViewSrc`) | browser-agent prompt + iframe URL guard |
+
+## Newsroom paywall (`lib/newsroom*.ts`, `app/api/newsroom/`, `app/newsroom/`)
+
+CrawlerPal-style: premium articles answer HTTP 402 with a `standing-promise` offer to programmatic clients;
+a captured Standing Promise unlocks them (`token=<promiseId>`). Proof marker: `/api/newsroom/proof` returns
+`locked:<slug>` / `unlocked:<slug>` — that URL is the `page_contains` condition the promise settles against.
+
+| File | Exports | Notes |
+|---|---|---|
+| `newsroom.ts` | `ARTICLES`, `Article`, `getArticle`, `listArticles`, `premiumOffer` | 5 deterministic articles, 2 premium ($0.01) |
+| `newsroom-access.ts` | `articleAccess`, `isUnlockedFor`, `proofMarker` | pure unlock decision (promise captured + needle match) |
+| `api/newsroom/articles` | GET list | free + premium metadata |
+| `api/newsroom/article` | GET `?slug=&token=` | 402 + offer, or 200 article HTML when unlocked |
+| `api/newsroom/proof` | GET `?article=` | `locked:`/`unlocked:` text for `page_contains` |
+| `integrations/paypal-approve.ts` | `approveOrderOnBrowser(vm, orderId)` | scripted sandbox-buyer login on the session VM; best-effort, degrades to manual approve URL |
 
 ## UI (`components/`, `app/`)
 

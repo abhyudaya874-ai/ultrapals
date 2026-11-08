@@ -14,6 +14,7 @@ const Schema = z.object({
   PAYPAL_CLIENT_SECRET: z.string().min(1),
   PAYPAL_ENV: z.literal("sandbox"), // anything else is a startup crash on purpose
   APP_URL: blank(z.string().url().default("http://localhost:3000")),
+  PUBLIC_URL: opt(), // public origin (quick tunnel) for URLs a cloud browser or the SSRF guard must reach; blank = APP_URL
   ANTHROPIC_API_KEY: opt(),
 
   // --- capability flags (see lib/integrations/registry.ts) ---
@@ -47,6 +48,8 @@ const Schema = z.object({
   OPENROUTER_API_KEY: opt(),
   TAVILY_API_KEY: opt(),
   EXA_API_KEY: opt(),
+  PAYPAL_SANDBOX_BUYER_EMAIL: opt(), // scripted approval on the live browser; never sent to a model
+  PAYPAL_SANDBOX_BUYER_PASSWORD: opt(),
 });
 
 export type Env = z.infer<typeof Schema>;
@@ -63,4 +66,10 @@ export function getEnv(): Env {
   }
   cached = parsed.data;
   return cached;
+}
+
+/** The origin a cloud browser or the SSRF-guarded fetch must be able to reach: PUBLIC_URL when set (tunnel), else APP_URL. */
+export function publicBase(): string {
+  const e = getEnv();
+  return (e.PUBLIC_URL ?? e.APP_URL).replace(/\/+$/, "");
 }

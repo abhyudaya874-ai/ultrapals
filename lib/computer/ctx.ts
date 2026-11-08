@@ -1,10 +1,16 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
+import { approveOrderOnBrowser } from "@/lib/integrations/paypal-approve";
 import { exaSearch } from "@/lib/integrations/exa";
+import { paypal } from "@/lib/paypal";
 import { tavilySearch } from "@/lib/integrations/tavily";
+import { degrade } from "@/lib/integrations/registry";
+import type { AdapterResult } from "@/lib/integrations/types";
 import { research } from "@/lib/research/run";
+import { createPromise, findPromises, promiseInfo, settlePromise } from "./promise-ops";
 import type { CEvent } from "./events";
 import { defaultModelDeps, type ModelDeps } from "./model";
+import { publicBase } from "@/lib/env";
 import type { Session } from "./session";
 
 /** Everything an agent touches the outside world through. Tests pass fakes; production passes defaultDeps. */
@@ -21,14 +27,27 @@ export interface Deps {
   term: { exec: typeof execInVm; write: typeof writeFileInVm; read: typeof readFileInVm; serve: typeof serveInVm };
   search: { id: string; label: string; run: typeof tavilySearch }[];
   research: typeof research;
+  /** Public origin for links the model may emit (PUBLIC_URL tunnel or APP_URL). Lazy: env parses on first call. */
+  appUrl: () => string;
+  /** The money path, reachable ONLY through /api/promise ops — never computeVerdict, never a direct capture. */
+  promise: { create: typeof createPromise; settle: typeof settlePromise; info: typeof promiseInfo; find: typeof findPromises };
+  approveOrder: typeof approveOrderOnBrowser;
+  orderStatus: (orderId: string) => Promise<AdapterResult<{ status: string }>>;
 }
 
 export const defaultDeps: Deps = {
   model: defaultModelDeps,
+  appUrl: publicBase,
   vm: { open: openBrowser, snapshot: snapshotPage, goto: gotoUrl, click: clickElement, type: typeInto, scroll: scrollPage },
   term: { exec: execInVm, write: writeFileInVm, read: readFileInVm, serve: serveInVm },
   search: [{ id: "tavily", label: "Tavily", run: tavilySearch }, { id: "exa", label: "Exa", run: exaSearch }],
   research,
+  promise: { create: createPromise, settle: settlePromise, info: promiseInfo, find: findPromises },
+  approveOrder: approveOrderOnBrowser,
+  orderStatus: async (orderId) => {
+    const o = await paypal.getOrder(orderId, { signal: AbortSignal.timeout(8000) });
+    return o.ok ? { ok: true, data: { status: o.orderStatus } } : degrade(`paypal order read: ${o.issue}`);
+  },
 };
 
 export interface SubCtx {

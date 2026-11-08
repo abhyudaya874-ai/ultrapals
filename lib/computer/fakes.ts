@@ -43,6 +43,7 @@ export type DepsPatch = { [K in keyof Deps]?: Partial<Deps[K]> | Deps[K] };
 export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPatch = {}): Deps {
   const never = async () => ({ ok: false as const, degraded: true as const, reason: "not faked" });
   const base = {
+    appUrl: () => "https://app.test",
     model: { open, now: () => 1000, models: [{ provider: "groq" as const, model: "openai/gpt-oss-120b" }] },
     vm: { open: async () => ok(VM), snapshot: never, goto: never, click: never, type: never, scroll: never },
     term: { exec: never, write: never, read: never, serve: never },

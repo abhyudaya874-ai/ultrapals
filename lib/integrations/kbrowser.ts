@@ -90,6 +90,12 @@ export async function closeBrowser(id: string): Promise<void> {
   if (isOn("kernel")) await client().browsers.deleteByID(id).catch(() => undefined);
 }
 
+/** Runs arbitrary Playwright on the session browser (server-side only; used for scripted flows like sandbox approval). */
+export async function execBrowser(b: LiveBrowser, code: string, timeoutSec = 60): Promise<AdapterResult<unknown>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => ({ ok: true as const, data: await run(b.id, code, timeoutSec) }));
+}
+
 export async function snapshotPage(b: LiveBrowser): Promise<AdapterResult<Snapshot>> {
   if (!isOn("kernel")) return degrade("kernel off");
   return guard("kernel", async () => {

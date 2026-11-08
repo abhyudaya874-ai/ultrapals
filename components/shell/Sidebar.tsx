@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { PromiseState } from "@/db/schema";
 import { useAgent } from "@/components/agent/AgentProvider";
-import { IconAgent, IconBoard, IconClock, IconPlus, IconSearch } from "@/components/ui/icons";
+import { IconAgent, IconBoard, IconClock, IconGlobe, IconPlus, IconSearch } from "@/components/ui/icons";
 
 interface Item { id: string; title: string; state: PromiseState; createdAt: string }
 interface Cap { id: string; on: boolean; note: string }
@@ -20,6 +20,7 @@ const NAV = [
   { href: "/", label: "New promise", Icon: IconPlus },
   { href: "/board", label: "Dashboard", Icon: IconBoard },
   { href: "/timeline", label: "Timeline", Icon: IconClock },
+  { href: "/newsroom", label: "Newsroom", Icon: IconGlobe },
 ] as const;
 
 export function Sidebar() {

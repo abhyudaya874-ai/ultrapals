@@ -1,6 +1,6 @@
 import type { AgentProfile } from "./types";
 
-export const CYCLE_BUDGET_MS = 24000; // guard 2.5 + observer 5 + resolver 14 + reconciler 1 + slack
+export const CYCLE_BUDGET_MS = 30000; // guard 2.5 + observer 5 + resolver 20 + reconciler 1 + slack
 
 /** Wall-clock budget for one cycle. Correct for serial AND parallel agents. */
 export class Budget {

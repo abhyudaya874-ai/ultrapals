@@ -1,6 +1,6 @@
 import type { Source } from "@/lib/research/sources";
 
-export type AgentRole = "main" | "research" | "browser" | "terminal";
+export type AgentRole = "main" | "research" | "browser" | "terminal" | "promise";
 export type RunState = "running" | "ok" | "error";
 
 /** Text the user selected on screen and added to the chat (Devin-style "Add to chat"). */

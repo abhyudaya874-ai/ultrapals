@@ -4,6 +4,7 @@ import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
 import { callModel } from "./model";
+import { runPromiseAgent } from "./promise-agent";
 import { runResearchAgent } from "./research-agent";
 import { pushHistory, type Session } from "./session";
 import { runTerminalAgent } from "./terminal-agent";
@@ -17,8 +18,8 @@ export interface MainInput {
   pageContext: string | null;
 }
 
-const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent } as const;
-const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: "Research", browser: "Browser", terminal: "Terminal" };
+const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent } as const;
+const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: "Research", browser: "Browser", terminal: "Terminal", promise: "Payments" };
 
 /**
  * The main agent: decides, delegates to subagents one at a time (they message it back), and writes the final answer.
@@ -36,7 +37,7 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       { role: "system" as const, content: MAIN_SYSTEM },
       {
         role: "user" as const,
-        content: mainPrompt({ prompt: input.prompt, path: input.path, pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === MAX_ROUNDS }),
+        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === MAX_ROUNDS }),
       },
     ];
     const res = yield* callModel("main", messages, deps.model, { signal, round, maxTokens: 1400 });

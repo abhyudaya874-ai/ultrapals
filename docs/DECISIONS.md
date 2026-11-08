@@ -81,3 +81,26 @@ connected." Consequences recorded so the structure is not re-litigated:
 - **The agent still cannot touch money.** It has no write tool; PayPal actions stay on the promise path
   (create/approve/settle via `/api/promise`). A future paywall beat (CrawlerPal-style 402) must route payment
   through a Standing Promise — never a direct capture.
+
+## 8. D-PAYWALL: newsroom 402 + promise-agent payment (2026-11-08)
+
+CrawlerPal beat: premium newsroom articles answer HTTP 402 with a `standing-promise` offer; a captured
+Standing Promise unlocks them. Consequences:
+
+- **Proof, not payment, is the condition.** `/api/newsroom/proof?article=<slug>` returns `locked:<slug>` or
+  `unlocked:<slug> order=<STATUS>` — that public URL is the promise's `page_contains` needle, so the verdict
+  path stays pure: PayPal order APPROVED + captured promise = unlock. No new reason codes, no protected edits.
+- **The promise agent owns the money story.** `lib/computer/promise-agent.ts` matches the article (weighted
+  slug/title/dek scoring, premium fallback for vague tasks), creates the promise via `/api/promise`, approves
+  the sandbox order on the session's live VM (`paypal-approve.ts`, credentials never reach a model), settles,
+  and returns the unlock URL. Main only delegates; the promise agent only ever calls the public ops.
+- **Scripted approval is best-effort.** PayPal serves variants (en/pt_BR, honeypot password fields, two checkout
+  UIs, cleared programmatic fills) that make full automation unreliable. The adapter uses visible-field selectors,
+  real keystrokes and text-matched buttons, degrades honestly, and the agent then polls PayPal ~75s so a manual
+  approval on the visible browser still completes the flow — that IS the demo beat.
+- **Resolver budget raised for cloud browsers.** `kernel.observePage` spins a full cloud browser (~13-18s cold);
+  the 14s resolver cap discarded completed snapshots as `unavailable` → FACT_MISSING → WAIT. Resolver is now
+  20s inside a 30s cycle budget (`lib/agent/{registry,budget}.ts` — runtime layer, not the verdict).
+- **`PUBLIC_URL` is required for the paywall proof.** `page_contains` URLs must pass `assertPublicHttpUrl`
+  and KERNEL observes from the cloud, so the tunnel origin is used for proof/article URLs while `APP_URL`
+  stays the app's own base.

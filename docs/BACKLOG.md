@@ -11,13 +11,14 @@
 - [x] P4 surfaces mostly done: /board prewired (pill+scoreboard+still-to-come+grid+chart), /api/studio/paypal live, still-to-come widget + copy test, CAP_STUDIO=0 -> [] + x-degraded proven, bryntum fontawesome fixed
 
 ## Next
-- [ ] Day 2: settle happy path with a real sandbox buyer approval
+- [x] Day 2+: settle happy path proven repeatedly; C7 newsroom paywall + promise agent live-verified through tunnel (3 captured unlocks)
 - [ ] Day 3: `/wire-world-condition`; failure paths (double click, decline, network off)
 - [ ] Day 4: `/wire-studio-dashboard`, `/wire-bryntum`, `/wire-zapier`
 - [ ] Day 5: `/wire-render`, `/postman-setup`, `/apimatic-verify-paypal`, README
 - [ ] Day 6: `/demo-freeze`
 
 ## Deferred (not on a demo beat)
+- scripted PayPal approval reliability: works but PayPal variants (locale, honeypot fields, bot detection) make it flaky; the agent falls back to manual approval on the live browser + 75s poll, which is the demo beat anyway
 - auth, multi-tenant, email beyond the nudge, webhooks beyond capture, admin UI, i18n
 - AG Studio dark theme: `createStudioTheme()` accepts no params and no dark preset is exported; the board sits in a `rounded-2xl bg-white` paper frame inside the dark shell until a theme can be built from `AgStudioThemeParams` (~80 keys, needs vendor docs)
 - persisted trace: agent rows/diff/explanation live only in SSE memory; a reloaded `/p` shows the event-log fallback + REASON_SENTENCE. Persisting `TraceEvent[]` would restore the full thread on reload

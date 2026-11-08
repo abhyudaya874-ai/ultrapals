@@ -4,7 +4,7 @@ import type { AgentProfile, SubagentId } from "./types";
 export const PROFILES: Record<SubagentId, AgentProfile> = {
   guard:      { id: "guard",      title: "Capture guard",       maxMs: 2500, retries: 0, requiresNetwork: false, onFailure: "abort" },
   observer:   { id: "observer",   title: "Condition observer",  maxMs: 5000, retries: 1, requiresNetwork: true,  onFailure: "degrade" },
-  resolver:   { id: "resolver",   title: "Condition resolver",  maxMs: 14000, retries: 0, requiresNetwork: true,  onFailure: "degrade" },
+  resolver:   { id: "resolver",   title: "Condition resolver",  maxMs: 20000, retries: 0, requiresNetwork: true,  onFailure: "degrade" }, // kernel.observePage spins a cloud browser: ~13-18s cold
   reconciler: { id: "reconciler", title: "Event reconciler",    maxMs: 1000, retries: 0, requiresNetwork: false, onFailure: "ignore" },
   explainer:  { id: "explainer",  title: "Verdict explainer",   maxMs: 4500, retries: 0, requiresNetwork: true,  onFailure: "ignore" },
   nudger:     { id: "nudger",     title: "Friendly nudger",     maxMs: 4000, retries: 0, requiresNetwork: true,  onFailure: "ignore" },
