@@ -80,14 +80,27 @@ describe("normalizeBalances", () => {
       ],
     });
     expect(rows).toEqual([
-      { type: "balance", id: "bal-USD", currency: "USD", totalMinor: 12345, availableMinor: 10000 },
-      { type: "balance", id: "bal-EUR", currency: "EUR", totalMinor: 5000, availableMinor: 5000 },
+      { type: "balance", id: "bal-USD", customer: "", amountMinor: null, currency: "USD", status: "", dueAt: null, totalMinor: 12345, availableMinor: 10000 },
+      { type: "balance", id: "bal-EUR", customer: "", amountMinor: null, currency: "EUR", status: "", dueAt: null, totalMinor: 5000, availableMinor: 5000 },
     ]);
   });
   it("skips balances with unparseable money and returns [] for junk", () => {
     expect(normalizeBalances({ balances: [{ currency: "USD" }] })).toEqual([]);
     expect(normalizeBalances(null)).toEqual([]);
     expect(normalizeBalances({})).toEqual([]);
+  });
+});
+
+describe("uniform row keys", () => {
+  // Studio infers the source schema from row keys: a missing key shows as "Invalid field" in the mapping panel.
+  const KEYS = ["customer", "amountMinor", "currency", "status", "dueAt"] as const;
+  it("every row type carries the five widget-mapped fields", () => {
+    const rows = [
+      normalizeInvoice(invoice),
+      normalizeTransaction(transaction),
+      ...normalizeBalances({ balances: [{ currency: "USD", total_balance: { value: "1.00", currency_code: "USD" }, available_balance: { value: "1.00", currency_code: "USD" } }] }),
+    ].filter(Boolean);
+    for (const row of rows) for (const k of KEYS) expect(row).toHaveProperty(k);
   });
 });
 

@@ -62,32 +62,35 @@ const BalancesRaw = z.object({
     .optional(),
 });
 
-export interface InvoiceRow {
-  type: "invoice";
-  id: string;
-  number: string;
-  status: string;
+// Studio infers the source schema from row keys: every row carries the five widget-mapped
+// fields (customer, amountMinor, currency, status, dueAt), empty when a row type lacks them.
+interface ActivityShared {
   customer: string;
-  amountMinor: number;
+  amountMinor: number | null;
   currency: string;
-  issuedAt: string | null;
+  status: string;
   dueAt: string | null;
 }
 
-export interface TransactionRow {
+export interface InvoiceRow extends ActivityShared {
+  type: "invoice";
+  id: string;
+  number: string;
+  amountMinor: number;
+  issuedAt: string | null;
+}
+
+export interface TransactionRow extends ActivityShared {
   type: "transaction";
   id: string;
   date: string | null;
   amountMinor: number;
-  currency: string;
-  status: string;
   note: string;
 }
 
-export interface BalanceRow {
+export interface BalanceRow extends ActivityShared {
   type: "balance";
   id: string;
-  currency: string;
   totalMinor: number;
   availableMinor: number;
 }
@@ -136,10 +139,12 @@ export function normalizeTransaction(raw: unknown): TransactionRow | null {
   return {
     type: "transaction",
     id: t.transaction_id,
+    customer: "",
     date: t.transaction_initiation_date ?? null,
     amountMinor: money.minor,
     currency: money.currency,
     status: t.transaction_status ?? "UNKNOWN",
+    dueAt: null,
     note: t.transaction_note ?? t.transaction_subject ?? "",
   };
 }
@@ -151,7 +156,19 @@ export function normalizeBalances(raw: unknown): BalanceRow[] {
     const total = minor(b.total_balance);
     const available = minor(b.available_balance);
     if (!total || !available) return [];
-    return [{ type: "balance" as const, id: `bal-${b.currency}`, currency: b.currency, totalMinor: total.minor, availableMinor: available.minor }];
+    return [
+      {
+        type: "balance" as const,
+        id: `bal-${b.currency}`,
+        customer: "",
+        amountMinor: null,
+        currency: b.currency,
+        status: "",
+        dueAt: null,
+        totalMinor: total.minor,
+        availableMinor: available.minor,
+      },
+    ];
   });
 }
 
