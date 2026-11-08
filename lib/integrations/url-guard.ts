@@ -28,3 +28,12 @@ export function assertPublicHttpUrl(input: string): string {
   }
   return u.toString();
 }
+
+/** Pure shape check for URLs a vendor RETURNED (display/citation only). Not an SSRF guard: never fetch these server-side. */
+export function isHttpUrl(u: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(u).protocol);
+  } catch {
+    return false;
+  }
+}

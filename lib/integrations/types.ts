@@ -20,6 +20,16 @@ export interface PageFact {
   replayUrl?: string; // KERNEL replay. Evidence only, never compared by the verdict
 }
 
+/** One web hit from any search vendor. Evidence for the Ask thread and cited promises; the verdict never reads it. */
+export interface WebSource {
+  url: string; // http(s) only
+  title: string;
+  snippet: string; // vendor-provided excerpt, trimmed by the research pipeline before it reaches a model
+  publishedDate: string | null;
+  provider: "tavily" | "exa";
+  score: number | null; // vendor relevance, only comparable within one provider
+}
+
 export interface NudgeInput {
   promiseId: string;
   payerName: string;
