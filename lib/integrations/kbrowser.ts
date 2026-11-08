@@ -98,10 +98,15 @@ export async function snapshotPage(b: LiveBrowser): Promise<AdapterResult<Snapsh
   });
 }
 
+/** Pure-ish. Public http(s) pages, plus the VM's OWN localhost (a dev server the terminal agent started inside the same cloud VM). Private ranges stay blocked. */
+export function resolveNavUrl(url: string): string {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d{2,5})?(\/|$)/i.test(url.trim()) ? url.trim() : assertPublicHttpUrl(url);
+}
+
 export async function gotoUrl(b: LiveBrowser, url: string): Promise<AdapterResult<null>> {
   if (!isOn("kernel")) return degrade("kernel off");
   return guard("kernel", async () => {
-    const safe = assertPublicHttpUrl(url);
+    const safe = resolveNavUrl(url);
     await run(b.id, `await page.goto(${JSON.stringify(safe)}, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(600);`, 30);
     return { ok: true, data: null };
   });

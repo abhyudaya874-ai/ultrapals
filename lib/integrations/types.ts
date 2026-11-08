@@ -26,7 +26,7 @@ export interface WebSource {
   title: string;
   snippet: string; // vendor-provided excerpt, trimmed by the research pipeline before it reaches a model
   publishedDate: string | null;
-  provider: "tavily" | "exa";
+  provider: "tavily" | "exa" | "browser";
   score: number | null; // vendor relevance, only comparable within one provider
 }
 

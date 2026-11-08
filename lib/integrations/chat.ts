@@ -104,3 +104,22 @@ export async function openChat(
     return { ok: true, data: { provider, model, body: res.body } };
   });
 }
+
+/** Reads a streamed completion body as deltas. Pure transport: no vendor call, so it lives beside the parser. */
+export async function* readDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatDelta> {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      const p = parseChatSse((buf += dec.decode(value, { stream: true })));
+      buf = p.rest;
+      yield* p.deltas;
+      if (p.done) return;
+    }
+  } finally {
+    reader.cancel().catch(() => undefined);
+  }
+}
