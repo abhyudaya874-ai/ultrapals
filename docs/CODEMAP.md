@@ -71,8 +71,14 @@ Generated from the real code, then annotated. If you add an export, add it here 
 
 ## UI (`components/`, `app/`)
 
-`Composer` (create form) · `PromiseSurface` (settle, replay, manual entry, event log) · `TracePanel` (one switch over `TraceEvent`) ·
-`PromiseTimeline` (Bryntum, client only) · `studio/StudioBoard`, `studio/registry` (`widgets`), `studio/agent` (`buildAi(adapter)`), `studio/chat-adapter` (`chatAdapter`, `toChatMessages`, `toChatTools`, `toToolChoice`, `parseDataLines`, `ChatStreamAccumulator`),
+`Composer` (create form) · `PromiseSurface` (settle, replay, manual entry, pane/outline state; dispatches `promises:changed`) ·
+`shell/AppShell` + `shell/Sidebar` (global dark shell, recents, drawer) + `shell/TopBar` ·
+`thread/Thread` (terms bubble, process disclosure, artifact cards, serif answer, action row, follow-ups; exports `ThreadProps`, `ThreadPromise`, `ThreadLogRow`, `PaneState`) ·
+`thread/Pane` (agent/artifact detail pane, toolbar: copy, download, share, expand, close) · `thread/Outline` (Agents/Artifacts/Plugins/Sources popover) ·
+`thread/Dock` (composer dock + `useDismiss`, `useStickToBottom`) · `thread/group-trace` (`groupTrace`, `processCounts`, `stepSummary`, `durationFromLog`, `isDegraded`) ·
+`thread/format` (`formatDuration`) · `thread/reason-copy` (`REASON_SENTENCE`) · `thread/describe-condition` · `thread/safe-url` (`safeHttpUrl`, `hostLabel`, `sourcesFromTrace`) ·
+`TracePanel` (`TraceRow` single row switch + `TracePanel` fallback aside) · `ui/Disclosure` · `ui/icons` (24 inline SVGs) ·
+`PromiseTimeline` (Bryntum `svalbard-dark`, client only) · `studio/StudioBoard` (AG Studio in paper frame), `studio/registry` (`widgets`), `studio/agent` (`buildAi(adapter)`), `studio/chat-adapter` (`chatAdapter`, `toChatMessages`, `toChatTools`, `toToolChoice`, `parseDataLines`, `ChatStreamAccumulator`),
 `studio/widgets/{verdict-pill,scoreboard}` · pages: `/` `/p` `/board` `/timeline`.
 
 ## Other

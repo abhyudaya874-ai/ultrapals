@@ -15,7 +15,9 @@
 - [ ] Day 6: `/demo-freeze`
 
 ## Deferred (not on a demo beat)
-- auth, multi-tenant, email beyond the nudge, webhooks beyond capture, admin UI, i18n, dark mode
+- auth, multi-tenant, email beyond the nudge, webhooks beyond capture, admin UI, i18n
+- AG Studio dark theme: `createStudioTheme()` accepts no params and no dark preset is exported; the board sits in a `rounded-2xl bg-white` paper frame inside the dark shell until a theme can be built from `AgStudioThemeParams` (~80 keys, needs vendor docs)
+- persisted trace: agent rows/diff/explanation live only in SSE memory; a reloaded `/p` shows the event-log fallback + REASON_SENTENCE. Persisting `TraceEvent[]` would restore the full thread on reload
 - refunds (a `refunded` state needs schema + logic + UI; the Bryntum brief mentions refund markers)
 - Studio agent adapter polish; Elastic Agent Builder tools beyond one ES|QL tool
 - DNS-rebinding defence in `url-guard.ts`
