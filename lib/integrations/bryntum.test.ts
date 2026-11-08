@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { toScheduler } from "./bryntum";
 
 const row = (o: Partial<Parameters<typeof toScheduler>[0][number]> = {}) => ({
-  promiseId: "p1", payer: "Asha", title: "Shoes", dueAtIso: "2026-11-10T10:00:00.000Z", state: "open" as const, amountMinor: 1250, currency: "USD", ...o,
+  id: "v1", promiseId: "p1", payer: "Asha", title: "Shoes", dueAtIso: "2026-11-10T10:00:00.000Z", state: "open" as const, amountMinor: 1250, currency: "USD", ...o,
 });
 
 describe("toScheduler", () => {
@@ -19,5 +19,10 @@ describe("toScheduler", () => {
   });
   it.each([["open", "pending"], ["capture_pending", "pending"], ["captured", "met"], ["released", "unmet"], ["declined", "unmet"]] as const)("%s -> %s", (state, cls) => {
     expect(toScheduler([row({ state })]).events[0].cls).toBe(cls);
+  });
+  it("keeps event ids unique when a promise has several verdict rows", () => {
+    const d = toScheduler([row(), row({ id: "v2" })]);
+    expect(d.events.map((e) => e.id)).toEqual(["v1", "v2"]);
+    expect(d.events.every((e) => e.promiseId === "p1")).toBe(true);
   });
 });

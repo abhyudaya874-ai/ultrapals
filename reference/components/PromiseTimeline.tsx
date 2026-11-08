@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toScheduler, type TimelineRow } from "@/lib/integrations/bryntum";
 
 interface ApiRow {
-  promiseId: string; payer: string; title: string; amountMinor: number; currency: string; state: TimelineRow["state"]; at: string;
+  id: string; promiseId: string; payer: string; title: string; amountMinor: number; currency: string; state: TimelineRow["state"]; at: string;
 }
 
 /** Client-only (Bryntum touches `window`): load it with next/dynamic { ssr: false }. */
@@ -16,7 +16,7 @@ export default function PromiseTimeline() {
     fetch("/api/studio/query?limit=200").then((r) => r.json()).then((d: ApiRow[]) => setRows(d)).catch(() => setRows([]));
   }, []);
 
-  const data = useMemo(() => toScheduler((rows ?? []).map((r) => ({ promiseId: r.promiseId, payer: r.payer, title: r.title, dueAtIso: r.at, state: r.state, amountMinor: r.amountMinor, currency: r.currency }))), [rows]);
+  const data = useMemo(() => toScheduler((rows ?? []).map((r) => ({ id: r.id, promiseId: r.promiseId, payer: r.payer, title: r.title, dueAtIso: r.at, state: r.state, amountMinor: r.amountMinor, currency: r.currency }))), [rows]);
   if (!rows) return <p className="p-4 text-neutral-500">Loading…</p>;
   if (data.events.length === 0) return <p className="p-4 text-neutral-500">No promises yet.</p>;
 
@@ -33,7 +33,7 @@ export default function PromiseTimeline() {
         void fetch("/api/promise", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ op: "reschedule", promiseId: String(rec.id), windowEndsAt: new Date(rec.endDate).toISOString() }),
+          body: JSON.stringify({ op: "reschedule", promiseId: String((rec as { promiseId?: string }).promiseId ?? rec.id), windowEndsAt: new Date(rec.endDate).toISOString() }),
         });
       }}
     />

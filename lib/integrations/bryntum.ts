@@ -4,6 +4,7 @@ import { formatMajor } from "@/lib/money";
 export type TimelineCls = "met" | "unmet" | "pending";
 
 export interface TimelineRow {
+  id: string; // unique per verdict row: Bryntum rejects duplicate event ids when a promise was settled more than once
   promiseId: string;
   payer: string;
   title: string;
@@ -15,7 +16,7 @@ export interface TimelineRow {
 
 export interface SchedulerData {
   resources: { id: string; name: string }[];
-  events: { id: string; resourceId: string; name: string; startDate: string; endDate: string; cls: TimelineCls }[];
+  events: { id: string; promiseId: string; resourceId: string; name: string; startDate: string; endDate: string; cls: TimelineCls }[];
 }
 
 const CLS: Record<PromiseState, TimelineCls> = {
@@ -35,7 +36,8 @@ export function toScheduler(rows: TimelineRow[]): SchedulerData {
   const events = rows.map((r) => {
     const due = new Date(r.dueAtIso).getTime();
     return {
-      id: r.promiseId,
+      id: r.id,
+      promiseId: r.promiseId,
       resourceId: r.payer,
       name: `${r.title} · ${formatMajor(r.amountMinor, r.currency)} ${r.currency}`,
       startDate: new Date(due - 3_600_000).toISOString(),
