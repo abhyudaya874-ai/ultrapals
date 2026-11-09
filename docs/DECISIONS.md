@@ -104,3 +104,35 @@ Standing Promise unlocks them. Consequences:
 - **`PUBLIC_URL` is required for the paywall proof.** `page_contains` URLs must pass `assertPublicHttpUrl`
   and KERNEL observes from the cloud, so the tunnel origin is used for proof/article URLs while `APP_URL`
   stays the app's own base.
+
+## 9. D-LLM: four-provider free LLM layer (authorized 2026-11-09)
+
+- **O8 — `lib/swarm/**` is a new top-level module** (5th-file rule satisfied once, here). Pure code plus the governor,
+  `askJson` and `fanOut` toolkit. Its tests count with the file they test (as O3).
+- **O9 — Size cap waived for test tables only.** Money-path and agent code keep the 60-line slice cap.
+- Free models only on all four providers; allowlists are the enforcement. A paid or unknown model id is refused before any request.
+- The LLM layer produces typed DATA. It never builds a Verdict and never reaches PayPal.
+
+## 10. D-TREE: bounded recursive subagents (authorized 2026-11-09)
+
+- **O10 — Tree shape is requested by models but ADMITTED by a pure function (`admitSpawn`)** inside `lib/swarm/tree/**`.
+  Depth, fan-out, node count, privileges, budget and VM leases are code constants, not model choices.
+- Children never get more capability than their parent (attenuation). No node at any depth reaches PayPal, the DB or a verdict.
+- `lib/agent/**` keeps its fixed graph (rule 60). D-TREE does not apply there.
+
+## 11. D-BUILDER: canvas editor for charters (authorized 2026-11-09)
+
+- **O11 — The run view stays a list** (no tree canvas). Only the Chartering Office screen may show a node canvas.
+- **O12 — Pointer drag is JavaScript;** motion stays CSS-only up to 200 ms (D-UI O4).
+- **O13 — No new dependency or origin:** hand-built SVG plus pointer events.
+
+## 12. D-CAMPUS: university naming layer (authorized 2026-11-09)
+
+- **O14 — `lib/campus/**` is a pure display map.** No behaviour change; canonical codes stay in data, events and receipts.
+
+## 13. D-RIVAL: exchange programme (authorized 2026-11-09)
+
+- **O15 — Exchange Fellows act only in competitor TEST environments** with test keys scoped outside the VM. Key prefixes are
+  validated and any live key is refused.
+- **O16 — Never enter a real card.** If a signup asks for one, the row is NOT_MEASURABLE (card required) and that rival is dropped.
+- **O17 — Rival rows compare structure only** (never sandbox milliseconds, approval rates or fees) and carry a provenance label.
