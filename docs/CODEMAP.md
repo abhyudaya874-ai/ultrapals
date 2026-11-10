@@ -219,3 +219,10 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `lib/integrations/vision.ts` `describeImages`. `ModelDeps.rotate` keeps a chosen order fixed.
 - `lib/automations/`: `core` (schedule, limits, `nextRunAfter`, `canStart`, `asksForSchedule`, `parseSchedule`), `store` (file, atomic), `run` (`runAutomation`, `summarizeRun`), `tick` (`execute`, `tickDue`, `startNow`),
   `scheduler` (timer + live deps), `public`, `presets`, `token`. Routes: `app/api/automations` (GET/POST/PATCH/DELETE), `/run`, `/tick`. UI: `components/automations/AutomationsView.tsx`, `app/automations`, `app/artifacts`, `app/new`.
+
+## Charts, palette, panels, player (D-LAYOUT)
+- `lib/charts/`: `spec` (22 chart types, `profileData`, `problems`, `suggestSpec`, `resolveSpec`), `choose` (model prompt, `specFromChoice`), `prepare` (data shaping per type), `flow` (money flow, activity grid). `lib/computer/chart-action.ts` (the `chart` action).
+- `components/charts/`: `geometry` (pure), `Charts` (SVG: radar, candlestick, waterfall, heatmap, donut, bars, box plot, swimlane timeline), `ChartView` (Recharts, lazy via `LazyChart`).
+- `components/shell/`: `layout` (resize maths), `Resizable` (hook, handle, rail), `recents` + `SidebarMenus` + `useRecents`, `palette` + `CommandPalette`.
+- `components/agent/`: `pace` (event pacing), `BrowserPip` + `pip-model`, `ChartBlock`, `AppArtifacts` (Newsroom, Dashboard, Timeline, Proctor).
+- `lib/automations/stats.ts` (run grid, kpis, upcoming runs); `lib/pals/situation-charts.ts` (radar, heatmap, fit waterfall for the SituationPanel).

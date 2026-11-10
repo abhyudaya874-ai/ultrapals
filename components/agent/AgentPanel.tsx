@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useStickToBottom } from "@/components/thread/Dock";
 import { IconAgent, IconArrowDown, IconPlus, IconX } from "@/components/ui/icons";
 import { PAL_NAMES } from "@/lib/computer/pals";
+import { Rail, ResizeHandle, useResizable } from "@/components/shell/Resizable";
 import { useAgent } from "./AgentProvider";
 import { PromptBox } from "./PromptBox";
 import { RunView } from "./RunView";
@@ -12,6 +13,7 @@ const HINTS = ["Why is this promise waiting?", "Build a tiny site in the termina
 /** UltraPal docked beside any other page (a promise, the form). It shares one conversation with the home screen. */
 export function AgentPanel() {
   const { open, toggle, runs, busy, newChat, send } = useAgent();
+  const rs = useResizable("dock", "right");
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const size = runs.reduce((n, r) => n + r.answer.length + r.timeline.length + r.agents.reduce((m, a) => m + a.steps.length + a.terms.length + a.files.length, 0), 0);
@@ -25,7 +27,10 @@ export function AgentPanel() {
   if (!open) return null;
 
   return (
-    <aside data-agent-panel data-testid="agent-panel" className="fixed inset-0 z-50 flex flex-col border-l border-line bg-sidebar lg:static lg:z-auto lg:w-[440px] lg:shrink-0">
+    <>
+    <ResizeHandle r={rs} label="chat" side="right" />
+    {rs.collapsed && <Rail title="UltraPal" side="right" onOpen={() => rs.setCollapsed(false)} />}
+    <aside data-agent-panel data-testid="agent-panel" style={rs.style} className={`fixed inset-0 z-50 flex flex-col bg-sidebar lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${rs.dragging ? "" : "lg:transition-[width] lg:duration-200"} ${rs.collapsed ? "lg:hidden" : ""}`}>
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
         <IconAgent className="size-4 text-fg-muted" />
         <h2 className="text-[15px] font-medium text-fg">{PAL_NAMES.main}</h2>
@@ -54,5 +59,6 @@ export function AgentPanel() {
       </div>
       <div className="shrink-0 px-3 pb-3"><PromptBox variant="dock" boxRef={box} /></div>
     </aside>
+    </>
   );
 }

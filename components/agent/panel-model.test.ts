@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCEvent, newRun } from "@/lib/computer/run";
 import type { CEvent } from "@/lib/computer/events";
-import { NO_PANEL, appTab, baseName, collectFiles, displayName, fileKind, fileTab, parseTab, totals, withTab, withoutTab } from "./panel-model";
+import { NO_PANEL, appTab, baseName, collectFiles, displayName, fileKind, fileTab, parseTab, totals, withTab, withoutTab, moveTab } from "./panel-model";
 
 const file = (agent: string, path: string, extra: Partial<Extract<CEvent, { kind: "file" }>> = {}): CEvent => ({ kind: "file", agent, id: path + (extra.mode ?? "w"), path, created: true, adds: 1, removes: 0, preview: "x", ...extra });
 const run = (...e: CEvent[]) => e.reduce(applyCEvent, newRun("r", "p"));
@@ -15,6 +15,7 @@ describe("parseTab", () => {
     [fileTab("a:b.md"), { kind: "file", path: "a:b.md" }],
     [appTab("newsroom"), { kind: "app", name: "newsroom" }],
     ["agent:research-1", { kind: "agent", id: "research-1" }],
+    ["chart:main-chart-3", { kind: "chart", id: "main-chart-3" }],
     ["app:nope", null],
     ["file:", null],
     ["weird", null],
@@ -77,4 +78,18 @@ describe("withTab / withoutTab", () => {
     expect(withoutTab(p, "zzz")).toBe(p);
   });
   it("closing the last tab closes the panel", () => expect(withoutTab({ open: true, tabs: ["a"], active: "a" }, "a")).toEqual(NO_PANEL));
+});
+
+describe("moveTab", () => {
+  const p = { open: true, tabs: ["a", "b", "c", "d"], active: "b" };
+  it.each([["a", 2, ["b", "c", "a", "d"]], ["d", 0, ["d", "a", "b", "c"]], ["b", 99, ["a", "c", "d", "b"]], ["c", -5, ["c", "a", "b", "d"]]])("move %s to %i", (id, to, want) => {
+    expect(moveTab(p, id, to).tabs).toEqual(want);
+  });
+  it("keeps every tab, the active one and the open flag; unknown or unchanged moves return the same object", () => {
+    const m = moveTab(p, "a", 3);
+    expect([...m.tabs].sort()).toEqual(["a", "b", "c", "d"]);
+    expect(m).toMatchObject({ open: true, active: "b" });
+    expect(moveTab(p, "zzz", 1)).toBe(p);
+    expect(moveTab(p, "b", 1)).toBe(p);
+  });
 });

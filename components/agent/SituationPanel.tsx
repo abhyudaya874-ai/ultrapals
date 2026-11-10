@@ -4,6 +4,8 @@ import { Disclosure } from "@/components/ui/Disclosure";
 import { SiteChip } from "@/components/ui/SiteChip";
 import { CHECKS, CHECK_LABEL, type Outcome } from "@/lib/pals/probe";
 import { REASON_TEXT, judgeRecommendation, type Outcome as Verdict } from "@/lib/pals/recommend";
+import { Heatmap, RadarChart, WaterfallChart } from "@/components/charts/Charts";
+import { heatData, leaderWaterfall, radarData } from "@/lib/pals/situation-charts";
 import { needWords, type RailId, type SituationCard, type Support } from "@/lib/pals/situation";
 
 const LABEL_W = 104;
@@ -34,6 +36,25 @@ function useSignoff(receiptId: string | undefined) {
     setAt(t);
   };
   return { at, sign };
+}
+
+/** Radar, heatmap and a waterfall of the leader's fit, all drawn from the card's cited cells. Collapsed by default: the ranked bars above already say who leads. */
+function SituationCharts({ card }: { card: SituationCard }) {
+  const radar = useMemo(() => radarData(card), [card]);
+  const heat = useMemo(() => heatData(card), [card]);
+  const wf = useMemo(() => leaderWaterfall(card), [card]);
+  if (card.rails.length === 0 || card.needs.length === 0) return null;
+  return (
+    <Disclosure label="Charts" meta="radar, heatmap, fit breakdown" testId="situation-charts">
+      <div className="space-y-4 pt-2">
+        {card.needs.length >= 3 && (
+          <figure><figcaption className="mb-1 text-[12.5px] text-fg-dim">Top rails across the needs. Unanswered counts as 0, the same as the conservative fit.</figcaption><RadarChart axes={radar.axes} series={radar.series} /><ul className="mt-1 flex flex-wrap justify-center gap-x-3 text-[11.5px] text-fg-muted">{radar.series.map((s, i) => <li key={s.name} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ background: ["#4e99a3", "#c9a14a", "#d2646e"][i] }} />{s.name}</li>)}</ul></figure>
+        )}
+        <figure><figcaption className="mb-1 text-[12.5px] text-fg-dim">Support per rail and need. Empty cells have no cited answer yet.</figcaption><Heatmap rows={heat.rows} cols={heat.cols.map((c) => (c.length > 5 ? `${c.slice(0, 4)}…` : c))} values={heat.values} cell={34} tip={(r, c) => `${heat.rows[r]} · ${heat.cols[c]}: ${heat.words[r][c]}`} /></figure>
+        {wf && <figure><figcaption className="mb-1 text-[12.5px] text-fg-dim">How {wf.rail}&apos;s fit adds up, in points out of 100, need by need.</figcaption><WaterfallChart steps={wf.steps} format={(n) => `${n}`} height={200} /></figure>}
+      </div>
+    </Disclosure>
+  );
 }
 
 /** Ranked fit with its honest band, a rails-by-needs grid of cited answers, and the real sandbox checks. Every number comes from the card. */
@@ -88,6 +109,7 @@ export function SituationPanel({ card }: { card: SituationCard }) {
         </svg>
       </figure>
 
+      <SituationCharts card={card} />
       <figure className="space-y-1" data-testid="situation-grid">
         <figcaption className="text-[12.5px] text-fg-dim">What each rail publishes, per need. ? means no cited page said, which is not the same as no.</figcaption>
         <div className="overflow-x-auto">

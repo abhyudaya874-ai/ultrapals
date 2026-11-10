@@ -237,17 +237,38 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
       pagesByRail.set(rail, [...have, ...ps.filter((p) => !urls.has(p.url))].slice(0, 6));
     }
 
-    // Read the most promising page of each rail still in the race IN FULL, so a cell is classified from the page and not from a snippet:
-    // a plain fetch first, then the live browser (the user watches it navigate), then curl in the terminal.
+    // 1. Classify from the search results first. A snippet that names the rail and quotes the support is enough, and it costs no page load.
+    const classify = async function* (view: Map<string, FetchedPage[]>, label: string): AsyncGenerator<CEvent, { added: number; dropped: number; conflicting: number }> {
+      const open = unknownCells(field.map((d) => d.id), needs, cells).filter((u) => view.has(u.rail));
+      if (open.length === 0) return { added: 0, dropped: 0, conflicting: 0 };
+      const out = yield* askMain(label, classifierMessages(idea, needs, open, view, live), (t) => parseCells(t).length > 0);
+      const v = verifyCells(out ? parseCells(out) : [], pagesByRail, needs.map((n) => n.need), live);
+      const m = mergeCellsDetail(cells, v.kept);
+      const added = m.cells.length - cells.length;
+      cells = m.cells;
+      conflicts += m.conflicts.length;
+      return { added, dropped: v.dropped.length, conflicting: m.conflicts.length };
+    };
+    let added = 0;
+    if (fresh.size > 0) {
+      const first = yield* classify(new Map([...fresh.keys()].map((r) => [r, pagesByRail.get(r) ?? []] as const)), `Round ${round}: reading what each rail supports`);
+      added += first.added;
+      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: classified the search results`, state: "ok", detail: `${first.added} cited answers kept, ${first.dropped} dropped by cite-or-die${first.conflicting ? `, ${first.conflicting} conflicting` : ""}`, ms: now() - tr };
+    } else {
+      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: nothing came back`, state: "error", detail: "no pages", ms: now() - tr };
+    }
+    // 2. A page is opened ONLY when a rail is still blocked: it is in the race, it still has unanswered pairs after its snippets were read,
+    // and it has a page we have not opened. A plain fetch goes first; the live browser (the user watches it) and then curl only when that is blocked or thin.
+    const blockedRails = new Set(unknownCells(field.map((d) => d.id), needs, cells).map((u) => u.rail));
     const rank = new Map(scoreRails(live, needs, cells).map((s, i) => [s.rail, i] as const));
     const readJobs = field
-      .filter((d) => unknown.some((u) => u.rail === d.id))
+      .filter((d) => blockedRails.has(d.id))
       .sort((x, y) => (rank.get(x.id) ?? 99) - (rank.get(y.id) ?? 99))
       .flatMap((d) => (pagesByRail.get(d.id) ?? []).filter((p) => !fullRead.has(p.url)).slice(0, 1).map((p) => ({ d, p })))
       .filter((j, i, all) => all.findIndex((x) => x.p.url === j.p.url) === i) // one URL is read once, however many rails list it
       .slice(0, MAX_READS_PER_ROUND);
     if (readJobs.length > 0) {
-      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: reading ${readJobs.length} page${readJobs.length === 1 ? "" : "s"} in full`, state: "running" };
+      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: ${readJobs.length} rail${readJobs.length === 1 ? " is" : "s are"} still blocked, opening ${readJobs.length === 1 ? "its best page" : "their best pages"}`, state: "running", detail: "the search results did not answer them" };
       const tread = now();
       const readTask = (job: (typeof readJobs)[number]) => async function* (): AsyncGenerator<CEvent, void> {
         fullRead.add(job.p.url);
@@ -258,21 +279,16 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
         if (readFull.size <= 12) yield* writeArtifact(ctx, `pages/${job.d.id}-${readFull.size}.md`, `# ${job.d.name}\n\nSource: ${r.url} (read by ${r.via})\n\n${r.text.slice(0, 3500)}\n`);
       };
       yield* mergeStreams(readJobs.map(readTask), 3);
-      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: read ${readJobs.length} page${readJobs.length === 1 ? "" : "s"} in full`, state: "ok", detail: `${[...readFull.values()].filter((v) => v !== "fetch").length} needed the browser or terminal`, ms: now() - tread };
-    }
-
-    let added = 0;
-    if (fresh.size > 0) {
-      const view = new Map([...fresh.keys()].map((r) => [r, pagesByRail.get(r) ?? []] as const));
-      const out = yield* askMain(`Round ${round}: reading what each rail supports`, classifierMessages(idea, needs, unknown.filter((u) => view.has(u.rail)), view, live), (t) => parseCells(t).length > 0);
-      const v = verifyCells(out ? parseCells(out) : [], pagesByRail, needs.map((n) => n.need), live);
-      const m = mergeCellsDetail(cells, v.kept);
-      added = m.cells.length - cells.length;
-      cells = m.cells;
-      conflicts += m.conflicts.length;
-      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: classified the pages`, state: "ok", detail: `${added} cited answers kept, ${v.dropped.length} dropped by cite-or-die${m.conflicts.length ? `, ${m.conflicts.length} conflicting` : ""}`, ms: now() - tr };
-    } else {
-      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: nothing came back`, state: "error", detail: "no pages", ms: now() - tr };
+      const opened = readJobs.filter((j) => readFull.has(j.p.url));
+      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: opened ${opened.length} of ${readJobs.length} page${readJobs.length === 1 ? "" : "s"}`, state: opened.length > 0 ? "ok" : "error", detail: `${[...readFull.values()].filter((v) => v !== "fetch").length} needed the browser or terminal`, ms: now() - tread };
+      if (opened.length > 0) {
+        // every blocked rail that lists an opened page benefits from it (one URL can serve several rails), not only the rail that asked
+        const openedUrls = new Set(opened.map((j) => j.p.url));
+        const view = new Map([...blockedRails].map((r) => [r, pagesByRail.get(r) ?? []] as const).filter(([, ps]) => ps.some((x) => openedUrls.has(x.url))));
+        const second = yield* classify(view, `Round ${round}: classifying the pages that were opened`);
+        added += second.added;
+        yield { kind: "step", agent, id: `round-${round}-deep`, label: `Round ${round}: classified the opened pages`, state: "ok", detail: `${second.added} more cited answers kept, ${second.dropped} dropped by cite-or-die${second.conflicting ? `, ${second.conflicting} conflicting` : ""}` };
+      }
     }
     yield* writeArtifact(ctx, "situation-cells.csv", csvOf(["rail", "need", "support", "url", "quote"], cells.map((c) => [live.find((d) => d.id === c.rail)?.name ?? c.rail, c.need, c.support, c.url, c.quote])));
     yield* writeArtifact(ctx, "situation-sources.csv", csvOf(["rail", "url", "host", "found_by", "read_by", "characters"], [...pagesByRail].flatMap(([rail, ps]) => ps.map((p) => [rail, p.url, hostOfUrl(p.url), p.operator ?? "", readFull.get(p.url) ?? "snippet", p.text.length]))));

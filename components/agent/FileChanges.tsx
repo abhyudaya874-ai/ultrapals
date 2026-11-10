@@ -8,15 +8,17 @@ import { displayName, fileTab, totals } from "./panel-model";
 
 const INLINE_ROWS = 40;
 
-function Row({ f, open: initial }: { f: FileEdit; open: boolean }) {
+function Row({ f, open: initial, live }: { f: FileEdit; open: boolean; live: boolean }) {
   const { openTab } = useAgent();
-  const [open, setOpen] = useState(initial);
+  // the newest write is open and the previous one folds away on its own, unless the person opened or closed it by hand
+  const [manual, setManual] = useState<boolean | null>(null);
+  const open = manual ?? initial;
   const read = f.mode === "read";
   const word = read ? "Read" : f.created ? "Created" : "Edited";
   return (
-    <li className="rounded-lg border border-line bg-surface" data-testid="file-row">
+    <li className="rise rounded-lg border border-line bg-surface" data-testid="file-row">
       <div className="flex items-center gap-1.5 pr-2">
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-3 text-left">
+        <button type="button" onClick={() => setManual(!open)} aria-expanded={open} className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-3 text-left">
           <IconFile className="size-4 shrink-0 text-fg-muted" />
           <span className="shrink-0 text-[13px] text-fg-muted">{word}</span>
           <span className="min-w-0 truncate font-mono text-[12.5px] text-fg">{displayName(f.path)}</span>
@@ -26,13 +28,13 @@ function Row({ f, open: initial }: { f: FileEdit; open: boolean }) {
         </button>
         <button type="button" onClick={() => openTab(fileTab(f.path))} className="h-7 shrink-0 rounded-md px-2 text-[12px] text-accent hover:bg-surface-2">Open</button>
       </div>
-      {open && f.patch && <div className="px-2 pb-2"><DiffView lines={f.patch} cut={f.cut} max={INLINE_ROWS} tone={read ? "read" : "diff"} /></div>}
+      {open && f.patch && <div className="px-2 pb-2"><DiffView lines={f.patch} cut={f.cut} max={INLINE_ROWS} tone={read ? "read" : "diff"} animate={live && initial} /></div>}
     </li>
   );
 }
 
 /** The files an agent wrote or read during a run, each with its green/red diff inline; "Open" puts the file in the artifact panel. */
-export function FileChanges({ files }: { files: FileEdit[] }) {
+export function FileChanges({ files, live = false }: { files: FileEdit[]; live?: boolean }) {
   if (files.length === 0) return null;
   const t = totals(files);
   const wrote = files.filter((f) => f.mode !== "read").length;
@@ -45,7 +47,7 @@ export function FileChanges({ files }: { files: FileEdit[] }) {
         <span className="font-medium text-fg">{label[0].toUpperCase() + label.slice(1)}</span>
         {wrote > 0 && <span className="ml-2 text-[12.5px] tabular-nums"><span className="text-ok">+{t.adds}</span> <span className="text-bad">−{t.removes}</span></span>}
       </p>
-      <ul className="space-y-1.5">{files.map((f) => <Row key={f.id} f={f} open={f === lastWrite} />)}</ul>
+      <ul className="space-y-1.5">{files.map((f) => <Row key={f.id} f={f} open={f === lastWrite} live={live} />)}</ul>
     </section>
   );
 }

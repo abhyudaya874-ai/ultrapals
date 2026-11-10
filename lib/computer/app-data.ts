@@ -6,6 +6,16 @@ export type AppName = (typeof APP_NAMES)[number];
 
 export interface ArticleRow { slug: string; title: string; dek: string; premium: boolean; price: string; currency: string; published: string }
 export interface VerdictLine { id: string; promiseId: string; payer: string; title: string; amount: string; state: string; kind: string; reason: string; consequence: string; at: string }
+export interface AutomationLine {
+  name: string;
+  scheduleText: string;
+  enabled: boolean;
+  running: boolean;
+  nextRunMs: number | null;
+  lastRunMs: number | null;
+  runsToday: number;
+  runs: { atMs: number; ms: number; status: string; agents: string[]; error?: string; answer: string }[];
+}
 export interface ProctorSnap {
   schedules: { job: string; everyMs: number; lastRunMs: number | null }[];
   runs: { job: string; atMs: number; status: string; note: string }[];
@@ -44,3 +54,11 @@ export function proctorCsv(p: ProctorSnap): { jobs: string; events: string } {
 /** Pure. A line the planner sees after the artifact opened: what it is and how big. The full text is in the workspace file. */
 export const openedSummary = (name: AppName, files: readonly { name: string; rows: number }[]): string =>
   `Opened the ${name} artifact. Files now in the workspace: ${files.map((f) => `${f.name} (${f.rows} rows)`).join(", ")}. Read them from the WORKSPACE FILES section or with the terminal agent.`;
+
+/** Pure. One row per automation: schedule, state and how it is doing. */
+export const automationsCsv = (list: readonly AutomationLine[]): string =>
+  csvOf(["name", "schedule", "state", "next_run", "last_run", "runs_24h", "last_status"], list.map((a) => [a.name, a.scheduleText, a.running ? "running" : a.enabled ? "active" : "paused", iso(a.nextRunMs), iso(a.lastRunMs), a.runsToday, a.runs[0]?.status ?? ""]));
+
+/** Pure. One row per finished run, newest first within each automation. */
+export const automationRunsCsv = (list: readonly AutomationLine[]): string =>
+  csvOf(["automation", "started", "seconds", "status", "agents", "error", "report_start"], list.flatMap((a) => a.runs.map((r) => [a.name, iso(r.atMs), Math.round(r.ms / 100) / 10, r.status, r.agents.join(" "), r.error ?? "", r.answer.replace(/\s+/g, " ").slice(0, 160)])));

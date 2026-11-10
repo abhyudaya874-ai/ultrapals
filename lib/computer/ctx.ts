@@ -1,6 +1,7 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
 import { fetchPageText } from "@/lib/integrations/webpage";
+import { toPublic } from "@/lib/automations/public";
 import { automationStore } from "@/lib/automations/store";
 import type { Spec } from "@/lib/automations/core";
 import { describeImages } from "@/lib/integrations/vision";
@@ -8,7 +9,7 @@ import { ARTICLES } from "@/lib/newsroom";
 import { DEFAULT_SCHEDULES } from "@/lib/proctor/core";
 import { proctorStore } from "@/lib/proctor/store";
 import { queryVerdictRows } from "@/lib/studio/rows";
-import type { ArticleRow, ProctorSnap, VerdictLine } from "./app-data";
+import type { ArticleRow, AutomationLine, ProctorSnap, VerdictLine } from "./app-data";
 import { probePayPal, probeSquare, probeStripe } from "@/lib/integrations/rails";
 import { approveOrderOnBrowser } from "@/lib/integrations/paypal-approve";
 import { exaSearch } from "@/lib/integrations/exa";
@@ -53,7 +54,7 @@ export interface Deps {
   /** Read-only data behind the app's own screens (newsroom, dashboard, timeline, proctor), for UltraPal's `open` action. */
   /** Creates a recurring automation (UltraPal's `automate` action). Refuses past the limits. */
   automations: { create: (spec: Spec, nowMs: number) => Promise<{ ok: true; id: string } | { ok: false; reason: string }> };
-  appData: { articles: () => ArticleRow[]; verdicts: (limit: number) => Promise<VerdictLine[]>; proctor: () => ProctorSnap };
+  appData: { articles: () => ArticleRow[]; verdicts: (limit: number) => Promise<VerdictLine[]>; proctor: () => ProctorSnap; automations: () => Promise<AutomationLine[]> };
   probes: { stripe: typeof probeStripe; square: typeof probeSquare; paypal: typeof probePayPal };
 }
 
@@ -85,6 +86,7 @@ export const defaultDeps: Deps = {
   appData: {
     articles: () => ARTICLES.map((a) => ({ slug: a.slug, title: a.title, dek: a.dek, premium: a.premium, price: a.price, currency: a.currency, published: a.published })),
     verdicts: (limit) => queryVerdictRows(limit),
+    automations: async () => (await automationStore().list()).map((a) => toPublic(a, Date.now(), false)),
     proctor: () => {
       const s = proctorStore.get();
       return { schedules: DEFAULT_SCHEDULES.map((x) => ({ job: x.job, everyMs: x.everyMs, lastRunMs: s.lastRunMs[x.job] ?? null })), runs: s.runs.slice(0, 20), cases: s.cases.slice(0, 20) };

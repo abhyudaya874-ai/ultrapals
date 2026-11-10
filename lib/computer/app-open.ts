@@ -1,5 +1,5 @@
 import { writeArtifact } from "./artifacts";
-import { openedSummary, newsroomCsv, proctorCsv, timelineCsv, verdictsCsv, type AppName } from "./app-data";
+import { automationRunsCsv, automationsCsv, openedSummary, newsroomCsv, proctorCsv, timelineCsv, verdictsCsv, type AppName } from "./app-data";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
 import { APP_TITLES } from "./pals";
@@ -17,8 +17,13 @@ export async function* openAppArtifact(ctx: SubCtx, name: AppName): AsyncGenerat
   const files: { name: string; csv: string }[] = [];
   try {
     if (name === "newsroom") files.push({ name: "app/newsroom.csv", csv: newsroomCsv(deps.appData.articles()) });
-    else if (name === "dashboard") files.push({ name: "app/verdicts.csv", csv: verdictsCsv(await deps.appData.verdicts(200)) });
-    else if (name === "timeline") files.push({ name: "app/timeline.csv", csv: timelineCsv(await deps.appData.verdicts(200)) });
+    else if (name === "dashboard") {
+      files.push({ name: "app/verdicts.csv", csv: verdictsCsv(await deps.appData.verdicts(200)) });
+      files.push({ name: "app/automations.csv", csv: automationsCsv(await deps.appData.automations()) });
+    } else if (name === "timeline") {
+      files.push({ name: "app/timeline.csv", csv: timelineCsv(await deps.appData.verdicts(200)) });
+      files.push({ name: "app/automation-runs.csv", csv: automationRunsCsv(await deps.appData.automations()) });
+    }
     else {
       const p = proctorCsv(deps.appData.proctor());
       files.push({ name: "app/proctor-jobs.csv", csv: p.jobs }, { name: "app/proctor-events.csv", csv: p.events });

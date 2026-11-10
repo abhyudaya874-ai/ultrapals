@@ -5,8 +5,9 @@ export const FIXED_TABS = ["browser", "terminal", "sources"] as const;
 export const fileTab = (path: string): string => `file:${path}`;
 export const appTab = (name: string): string => `app:${name}`;
 export const agentTab = (id: string): string => `agent:${id}`;
+export const chartTab = (id: string): string => `chart:${id}`;
 
-export type TabRef = { kind: "browser" | "terminal" | "sources" } | { kind: "file"; path: string } | { kind: "app"; name: AppArtifactName } | { kind: "agent"; id: string };
+export type TabRef = { kind: "browser" | "terminal" | "sources" } | { kind: "file"; path: string } | { kind: "app"; name: AppArtifactName } | { kind: "agent"; id: string } | { kind: "chart"; id: string };
 
 /** The app's own screens, shown as artifacts instead of pages. UltraPal can load the same data with its `open` action. */
 export const APP_ARTIFACTS = {
@@ -29,6 +30,7 @@ export function parseTab(id: string): TabRef | null {
     case "file": return { kind: "file", path: key };
     case "app": return isAppArtifact(key) ? { kind: "app", name: key } : null;
     case "agent": return { kind: "agent", id: key };
+    case "chart": return { kind: "chart", id: key };
     default: return null;
   }
 }
@@ -95,4 +97,14 @@ export function withoutTab(p: PanelState, id: string): PanelState {
   const tabs = p.tabs.filter((t) => t !== id);
   if (tabs.length === 0) return NO_PANEL;
   return { open: p.open, tabs, active: p.active === id ? tabs[Math.max(0, i - 1)] : p.active };
+}
+
+/** Pure. Moves tab `id` so it sits at index `to` (after the move). Unknown ids and out-of-range targets are clamped, never lost. */
+export function moveTab(p: PanelState, id: string, to: number): PanelState {
+  const from = p.tabs.indexOf(id);
+  if (from < 0) return p;
+  const rest = p.tabs.filter((t) => t !== id);
+  const at = Math.max(0, Math.min(to, rest.length));
+  if (at === from) return p;
+  return { ...p, tabs: [...rest.slice(0, at), id, ...rest.slice(at)] };
 }

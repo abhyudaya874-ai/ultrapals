@@ -1,11 +1,12 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Attachment } from "@/lib/computer/events";
+import type { Attachment, CEvent } from "@/lib/computer/events";
 import { DEFAULT_CHOICE, parseChoice, type ModelChoice } from "@/lib/computer/models";
 import { applyCEvent, newRun, parseCStream, type Run } from "@/lib/computer/run";
 import { STORE_KEY, mergeStored, parseStored, type StoredFile } from "./artifact-store";
 import { prepareImage, refuseFile, type PendingImage } from "./image-prep";
-import { NO_PANEL, agentTab, appTab, collectFiles, fileTab, isAppArtifact, parseTab, withTab, withoutTab, type PanelState } from "./panel-model";
+import { chunkDelay, expandEvent, paceDelay } from "./pace";
+import { NO_PANEL, agentTab, appTab, collectFiles, fileTab, isAppArtifact, moveTab, parseTab, withTab, withoutTab, type PanelState } from "./panel-model";
 
 /** Kept for callers that still say "open the files tab": it opens the newest file, or just the panel. */
 export type WorkspaceTab = "browser" | "terminal" | "files" | "sources" | "agent";
@@ -20,6 +21,10 @@ interface AgentCtx {
   /** A short problem to show under the input (an image that could not be attached, a failed send). */
   notice: string | null;
   panel: PanelState;
+  /** The floating live-browser player (bottom right). `expanded` is the large view with "Take over". */
+  pip: PipState;
+  setPip: (p: Partial<PipState>) => void;
+  reorderTabs: (id: string, to: number) => void;
   /** Files from other sources (an automation's run) opened as tabs; path -> text. */
   localFiles: Record<string, string>;
   /** Files the agents made, remembered in this browser for the Artifacts page. */
@@ -56,6 +61,12 @@ export const useAgent = (): AgentCtx => {
   return c;
 };
 
+export interface PipState {
+  open: boolean;
+  expanded: boolean;
+}
+const NO_PIP: PipState = { open: false, expanded: false };
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const SID = "sp-agent-session";
 const MODEL_KEY = "sp-model";
 const MAX_SELECTION = 4000;
@@ -69,6 +80,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<PanelState>(NO_PANEL);
+  const [pip, setPipState] = useState<PipState>(NO_PIP);
   const [localFiles, setLocalFiles] = useState<Record<string, string>>({});
   const [stored, setStored] = useState<StoredFile[]>([]);
   const [liveViewUrl, setLiveViewUrl] = useState<string | null>(null);
@@ -77,7 +89,6 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const session = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const running = useRef(false);
-  const seenFiles = useRef(new Set<string>());
   const savedSig = useRef("");
 
   useEffect(() => {
@@ -141,6 +152,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(MODEL_KEY, JSON.stringify(m)); } catch { /* not remembered; still applies to this tab */ }
   }, []);
 
+  const setPip = useCallback((p: Partial<PipState>) => setPipState((cur) => ({ ...cur, ...p })), []);
+  const reorderTabs = useCallback((id: string, to: number) => setPanel((p) => moveTab(p, id, to)), []);
   const openTab = useCallback((id: string) => setPanel((p) => (parseTab(id) ? withTab(p, id, true) : p)), []);
   const closeTab = useCallback((id: string) => setPanel((p) => withoutTab(p, id)), []);
   const closePanel = useCallback(() => setPanel((p) => ({ ...p, open: false })), []);
@@ -202,29 +215,51 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      // Events are shown one at a time, paced (pace.ts), so a burst from the server (ten files at the end of a search) streams in instead of dumping.
+      const queue: { e: CEvent; split: boolean }[] = [];
+      let draining: Promise<void> | null = null;
+      let hurry = false;
+      let firstFile = true;
+      const show = (e: CEvent) => {
+        if (e.kind === "workspace") {
+          setLiveViewUrl(e.liveViewUrl);
+          setPipState((p) => (p.open ? p : { open: true, expanded: false }));
+        } else if (e.kind === "page") setPage({ url: e.url, title: e.title });
+        else if (e.kind === "term") setPanel((w) => withTab(w, "terminal", false));
+        else if (e.kind === "sources" || e.kind === "visit") setPanel((w) => withTab(w, "sources", false));
+        else if (e.kind === "open" && isAppArtifact(e.artifact)) setPanel((w) => withTab(w, appTab(e.artifact), true));
+        else if (e.kind === "file" && e.mode !== "read" && firstFile) {
+          // only the first file of a run opens a tab by itself; the rest are rows in the thread with an Open button
+          firstFile = false;
+          setPanel((w) => withTab(w, fileTab(e.path), true));
+        }
+        patch((r) => applyCEvent(r, e));
+      };
+      const drain = async () => {
+        while (queue.length) {
+          const { e, split } = queue.shift()!;
+          show(e);
+          const d = hurry ? 0 : split ? chunkDelay(e, true) : paceDelay(e, queue.length);
+          if (d) await sleep(d);
+        }
+        draining = null;
+      };
+      const push = (events: CEvent[]) => {
+        for (const e of events) {
+          const parts = expandEvent(e);
+          for (const p of parts) queue.push({ e: p, split: parts.length > 1 });
+        }
+        if (!draining) draining = drain();
+      };
+      ctl.signal.addEventListener("abort", () => { hurry = true; });
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
         const p = parseCStream((buf += dec.decode(value, { stream: true })));
         buf = p.rest;
-        if (!p.events.length) continue;
-        for (const e of p.events) {
-          if (e.kind === "workspace") {
-            setLiveViewUrl(e.liveViewUrl);
-            setPanel((w) => withTab(w, "browser", !w.open));
-          } else if (e.kind === "page") setPage({ url: e.url, title: e.title });
-          else if (e.kind === "term") setPanel((w) => withTab(w, "terminal", false));
-          else if (e.kind === "sources" || e.kind === "visit") setPanel((w) => withTab(w, "sources", false));
-          else if (e.kind === "open" && isAppArtifact(e.artifact)) setPanel((w) => withTab(w, appTab(e.artifact), true));
-          else if (e.kind === "file") {
-            // a file the agent writes opens beside the chat the first time it appears; later edits update the same tab
-            const first = !seenFiles.current.has(e.path);
-            seenFiles.current.add(e.path);
-            setPanel((w) => withTab(w, fileTab(e.path), first && e.mode !== "read"));
-          }
-        }
-        patch((r) => p.events.reduce(applyCEvent, r));
+        if (p.events.length) push(p.events);
       }
+      await draining;
       patch((r) => (r.status === "running" ? applyCEvent(r, { kind: "error", message: "The stream ended early." }) : r));
     } catch (e) {
       fail(ctl.signal.aborted ? "Stopped." : e instanceof Error ? e.message : "Network error.");
@@ -242,7 +277,6 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     session.current = null;
     sessionStorage.removeItem(SID);
     if (sid) void fetch(`/api/agent?sessionId=${sid}`, { method: "DELETE" }).catch(() => undefined);
-    seenFiles.current = new Set();
     setRuns([]);
     setAttachments([]);
     setImages([]);
@@ -250,12 +284,13 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setLiveViewUrl(null);
     setPage(null);
     setPanel(NO_PANEL);
+    setPipState(NO_PIP);
     setLocalFiles({});
   }, []);
 
   const value = useMemo<AgentCtx>(
     () => ({
-      open, busy, runs, attachments, images, model, notice, panel, localFiles, stored, liveViewUrl, page, focusTick,
+      open, busy, runs, attachments, images, model, notice, panel, pip, setPip, reorderTabs, localFiles, stored, liveViewUrl, page, focusTick,
       toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles,
       removeAttachment: (id) => setAttachments((a) => a.filter((x) => x.id !== id)),
       removeImage: (id) => setImages((a) => a.filter((x) => x.id !== id)),
@@ -265,11 +300,12 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
           const newest = collectFiles(runs).at(-1);
           setPanel((p) => (newest ? withTab(p, fileTab(newest.path), true) : { ...p, open: true, active: p.active ?? p.tabs[0] ?? null }));
         } else if (tab === "agent") setPanel((p) => (agentId ? withTab(p, agentTab(agentId), true) : p));
+        else if (tab === "browser") setPipState({ open: true, expanded: true });
         else setPanel((p) => withTab(p, tab, true));
       },
       closeWorkspace: closePanel,
     }),
-    [open, busy, runs, attachments, images, model, notice, panel, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles],
+    [open, busy, runs, attachments, images, model, notice, panel, pip, setPip, reorderTabs, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

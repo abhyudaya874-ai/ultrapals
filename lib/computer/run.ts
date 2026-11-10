@@ -1,6 +1,7 @@
 import type { ExamCard } from "@/lib/pals/card";
 import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
+import type { ChartSpec } from "@/lib/charts/spec";
 import type { DiffLine } from "./diff";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
 import { hostOfUrl, type Visit } from "./visits";
@@ -30,6 +31,12 @@ export interface FileEdit {
   patch?: DiffLine[];
   cut?: number;
   mode?: "write" | "read";
+}
+export interface ChartItem {
+  id: string;
+  spec: ChartSpec;
+  note?: string;
+  source?: string;
 }
 export interface AgentRow {
   id: string;
@@ -79,6 +86,8 @@ export interface Run {
   page?: { url: string; title: string };
   exam?: ExamCard;
   situation?: SituationCard;
+  /** Charts UltraPal drew from workspace tables. */
+  charts?: ChartItem[];
   /** Every search made and page read by any agent, in order. Perplexity-style "sites searched". */
   visits: Visit[];
   spawns: SpawnNote[];
@@ -131,6 +140,8 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       // one entry per id; the same page (canonical URL) read by two agents is one visit
       return { ...r, visits: upsert(r.visits, v).slice(-300) };
     }
+    case "chart":
+      return { ...r, charts: upsert(r.charts ?? [], { id: e.id, spec: e.spec, note: e.note, source: e.source }) };
     case "ladder":
       return { ...r, exam: e.card };
     case "situation":

@@ -5,6 +5,7 @@ import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
 import { Spec, asksForSchedule, describeSchedule, parseSchedule } from "@/lib/automations/core";
+import { runChart } from "./chart-action";
 import { openAppArtifact } from "./app-open";
 import { IMAGE_INSTRUCTION } from "./images";
 import { answerTextSoFar } from "./json-text";
@@ -124,6 +125,11 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       opened.add(a.artifact);
       const result = yield* openAppArtifact({ agent: "main", session, deps, signal }, a.artifact);
       results.push({ agent: "app", task: `open ${a.artifact}`, result });
+      continue;
+    }
+    if (a.action === "chart") {
+      const result = yield* runChart({ agent: "main", session, deps, signal }, a.file, a.question);
+      results.push({ agent: "chart", task: `chart ${a.file}`, result });
       continue;
     }
     if (a.action === "automate") {

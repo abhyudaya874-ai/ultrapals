@@ -14,6 +14,7 @@ import { SearchedSites } from "./SearchedSites";
 import { SourceStack } from "@/components/ui/SiteChip";
 import { groupVisits } from "@/lib/computer/visits";
 import { useAgent } from "./AgentProvider";
+import { ChartBlock } from "./ChartBlock";
 import { FileChanges } from "./FileChanges";
 
 const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
@@ -111,7 +112,9 @@ export function RunView({ run }: { run: Run }) {
         </Disclosure>
       )}
 
-      <FileChanges files={files} />
+      <FileChanges files={files} live={running} />
+
+      {run.charts?.map((c) => <ChartBlock key={c.id} item={c} />)}
 
       {run.exam && <ExamPanel card={run.exam} />}
       {run.situation && <SituationPanel card={run.situation} />}

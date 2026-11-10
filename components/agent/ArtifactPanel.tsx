@@ -5,11 +5,12 @@ import { formatDuration } from "@/components/thread/format";
 import { useDismiss } from "@/components/thread/Dock";
 import { IconBoard, IconClock, IconFile, IconGlobe, IconPlus, IconTerminal, IconX, IconAgent, IconBolt, IconSearch } from "@/components/ui/icons";
 import { SiteChip } from "@/components/ui/SiteChip";
-import { liveViewSrc } from "@/lib/browse/live-view";
 import { subagents, type AgentRow } from "@/lib/computer/run";
 import { groupVisits } from "@/lib/computer/visits";
 import type { Source } from "@/lib/research/sources";
+import { Rail, ResizeHandle, useResizable } from "@/components/shell/Resizable";
 import { useAgent } from "./AgentProvider";
+import { ChartBlock } from "./ChartBlock";
 import { FileArtifact } from "./FileArtifact";
 import { SourcePane } from "./SourcePane";
 import { APP_ARTIFACTS, appTab, baseName, collectFiles, parseTab, type AppArtifactName } from "./panel-model";
@@ -18,49 +19,13 @@ const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } a
 const EMPTY = "grid h-full place-items-center px-8 text-center text-[13.5px] text-fg-dim";
 
 function BrowserTab() {
-  const { liveViewUrl, page, busy } = useAgent();
-  const frame = useRef<HTMLIFrameElement>(null);
-  const src = useMemo(() => liveViewSrc(liveViewUrl, true), [liveViewUrl]);
-  const [playing, setPlaying] = useState(false);
-  const [control, setControl] = useState(false);
-  useEffect(() => {
-    setPlaying(false);
-    setControl(false);
-    if (!src) return;
-    const origin = new URL(src).origin;
-    const on = (e: MessageEvent) => {
-      if (e.origin !== origin) return;
-      if (e.data?.type === "KERNEL_PLAYING") setPlaying(true);
-      if (e.data?.type === "KERNEL_PAUSED") setPlaying(false);
-    };
-    window.addEventListener("message", on);
-    return () => window.removeEventListener("message", on);
-  }, [src]);
-  if (!src) return <p className={EMPTY}>The browser starts when an agent needs one. Ask it to open a page or build something.</p>;
-  const toggle = () => {
-    const next = !control;
-    setControl(next);
-    frame.current?.contentWindow?.postMessage({ type: "KERNEL_SET_READ_ONLY", readOnly: !next, requestId: crypto.randomUUID() }, new URL(src).origin);
-    if (next) frame.current?.focus();
-  };
+  const { pip, setPip, liveViewUrl } = useAgent();
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-3">
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-fg-muted">
-          <IconGlobe className="size-4 shrink-0" />
-          <span className="truncate" data-testid="url-bar">{page?.url ?? "about:blank"}</span>
-        </div>
-        <button type="button" onClick={toggle} aria-pressed={control} className="h-8 shrink-0 rounded-full border border-line bg-surface px-3 text-[12.5px] text-fg-muted hover:bg-surface-2 hover:text-fg">
-          {control ? "Give back control" : "Take over"}
-        </button>
+    <div className="grid h-full place-items-center px-8 text-center">
+      <div>
+        <p className="text-[13.5px] text-fg-dim">The live browser plays in the corner of the screen so you can watch it while you read.</p>
+        <button type="button" disabled={!liveViewUrl} onClick={() => setPip({ open: true, expanded: !pip.expanded || !pip.open })} className="mt-3 h-8 rounded-full border border-line bg-surface px-3 text-[12.5px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50">{liveViewUrl ? "Show the browser" : "No browser yet"}</button>
       </div>
-      <div className="relative grid min-h-0 flex-1 place-items-center">
-        <div className="relative aspect-[16/10] max-h-full w-full overflow-hidden rounded-card border border-line bg-black">
-          <iframe ref={frame} src={src} title="Live browser" allow="autoplay; clipboard-read; clipboard-write" className="size-full" data-testid="live-view" />
-          {!playing && <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/70 text-[13px] text-fg-muted">Connecting to the live browser…</div>}
-        </div>
-      </div>
-      <p className="px-1 text-[12px] text-fg-dim">{control ? "You are controlling the browser." : busy ? "The agent is driving. Its cursor is the real one." : "Watching live. Use Take over to click yourself."}</p>
     </div>
   );
 }
@@ -155,9 +120,12 @@ const APP_ICON: Record<AppArtifactName, typeof IconFile> = { newsroom: IconGlobe
  * screens). Docked beside the chat on the home screen; over the page elsewhere.
  */
 export function ArtifactPanel({ docked }: { docked: boolean }) {
-  const { panel, openTab, closeTab, closePanel, openApp, runs, localFiles } = useAgent();
+  const { panel, openTab, closeTab, closePanel, openApp, runs, localFiles, reorderTabs } = useAgent();
+  const size = useResizable("artifacts", "right");
+  const [dragId, setDragId] = useState<string | null>(null);
   const agents = useMemo(() => runs.flatMap(subagents), [runs]);
   const files = useMemo(() => collectFiles(runs), [runs]);
+  const charts = useMemo(() => runs.flatMap((r) => r.charts ?? []), [runs]);
   const sources = useMemo(() => [...runs].reverse().find((r) => r.sources.length)?.sources ?? [], [runs]);
   const visited = useMemo(() => groupVisits([...runs].reverse().find((r) => r.visits.length)?.visits ?? []), [runs]);
   const [pick, setPick] = useState<number | null>(null);
@@ -182,20 +150,32 @@ export function ArtifactPanel({ docked }: { docked: boolean }) {
       case "file": return { text: baseName(t.path), Icon: IconFile };
       case "app": return { text: APP_ARTIFACTS[t.name].title, Icon: APP_ICON[t.name] };
       case "agent": return { text: agents.find((a) => a.id === t.id)?.title ?? t.id, Icon: IconAgent };
+      case "chart": return { text: charts.find((c) => c.id === t.id)?.spec.title ?? "Chart", Icon: IconBoard };
     }
   };
   const tabs = panel.tabs.flatMap((id) => { const l = label(id); return l ? [{ id, ...l }] : []; });
   const active = parseTab(panel.active ?? "");
-  const shell = docked ? "fixed inset-0 z-[55] flex flex-col bg-canvas lg:static lg:z-auto lg:w-[min(52%,880px)] lg:min-w-[440px] lg:shrink-0 lg:border-l lg:border-line" : "fixed inset-0 z-[55] flex flex-col bg-canvas lg:absolute lg:z-30";
+  const shell = docked ? `fixed inset-0 z-[55] flex flex-col bg-canvas lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${size.dragging ? "" : "lg:transition-[width] lg:duration-200"} ${size.collapsed ? "lg:hidden" : ""}` : "fixed inset-0 z-[55] flex flex-col bg-canvas lg:absolute lg:z-30";
 
   return (
-    <aside className={shell} data-testid="workspace" aria-label="Artifacts">
+    <>
+    {docked && <ResizeHandle r={size} label="artifacts" side="right" />}
+    {docked && size.collapsed && <Rail title="Artifacts" badge={tabs.length} side="right" onOpen={() => size.setCollapsed(false)} />}
+    <aside className={shell} style={docked ? size.style : undefined} data-testid="workspace" aria-label="Artifacts">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Artifacts">
           {tabs.map((t) => {
             const on = t.id === panel.active;
             return (
-              <span key={t.id} className={`group inline-flex h-8 shrink-0 items-center rounded-lg ${on ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2/60 hover:text-fg"}`}>
+              <span
+                key={t.id}
+                draggable
+                onDragStart={(e) => { setDragId(t.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.id); }}
+                onDragOver={(e) => { if (dragId && dragId !== t.id) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); if (dragId) reorderTabs(dragId, panel.tabs.indexOf(t.id)); setDragId(null); }}
+                onDragEnd={() => setDragId(null)}
+                className={`group inline-flex h-8 shrink-0 items-center rounded-lg transition-colors ${dragId === t.id ? "opacity-40" : ""} ${on ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2/60 hover:text-fg"}`}
+              >
                 <button type="button" role="tab" aria-selected={on} data-testid="artifact-tab" onClick={() => openTab(t.id)} className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 pl-2.5 pr-1 text-[13px]">
                   <t.Icon className="size-4 shrink-0" /><span className="truncate">{t.text}</span>
                 </button>
@@ -238,8 +218,13 @@ export function ArtifactPanel({ docked }: { docked: boolean }) {
         {active?.kind === "app" && active.name === "dashboard" && <DashboardArtifact />}
         {active?.kind === "app" && active.name === "timeline" && <TimelineArtifact />}
         {active?.kind === "app" && active.name === "proctor" && <ProctorArtifact />}
+        {active?.kind === "chart" && (() => {
+          const c = charts.find((x) => x.id === active.id);
+          return c ? <div className="h-full overflow-y-auto p-4"><ChartBlock item={c} height={380} inPanel /></div> : <p className={EMPTY}>This chart is no longer available.</p>;
+        })()}
         {active?.kind === "agent" && <AgentTab agent={agents.find((a) => a.id === active.id)} result={runs.flatMap((r) => r.messages).filter((m) => m.from === active.id).at(-1)?.text} />}
       </div>
     </aside>
+    </>
   );
 }

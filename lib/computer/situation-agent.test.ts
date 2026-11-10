@@ -16,7 +16,7 @@ const probes = { stripe: async () => ok(row("stripe")), square: async () => ok(r
 
 const sse = (t: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\ndata: [DONE]\n\n`;
 /** A fake model that answers by what the system prompt asks for, and records which model (family) answered which job. */
-function brain(o: { pick?: string; stripeWins?: boolean; dead?: boolean } = {}) {
+function brain(o: { pick?: string; stripeWins?: boolean; dead?: boolean; needsFullPage?: boolean } = {}) {
   const seen: { job: string; model: string }[] = [];
   const open = (async (provider: "groq", model: string, messages: { content: string }[]) => {
     if (o.dead) return { ok: false as const, degraded: true as const, reason: "down" };
@@ -31,7 +31,7 @@ function brain(o: { pick?: string; stripeWins?: boolean; dead?: boolean } = {}) 
       job = "classify";
       const wanted = /CELLS WANTED \(rail\/need\): (.*)/.exec(user)?.[1] ?? "";
       const cells = wanted.split(", ").filter(Boolean).map((t) => t.split("/")).map(([rail, need]) => ({ rail, need, support: o.stripeWins === false ? "partial" : rail === "stripe" ? "yes" : "no", url: PAGE.url, quote: rail === "lemon-squeezy" ? "Lemon Squeezy acts as merchant of record" : "publish payments docs" }));
-      reply = JSON.stringify({ cells: cells.map((c) => (c.rail === "stripe" || c.rail === "lemon-squeezy" ? c : { ...c, quote: "publish payments docs" })) });
+      reply = JSON.stringify({ cells: o.needsFullPage && !user.includes("Refunds are issued") ? [] : cells.map((c) => (c.rail === "stripe" || c.rail === "lemon-squeezy" ? c : { ...c, quote: "publish payments docs" })) });
     }
     else if (sys.includes("independent reviewer")) { job = "blind"; reply = JSON.stringify({ pick: o.pick ?? "stripe", concern: "fees" }); }
     seen.push({ job, model });
@@ -134,24 +134,34 @@ describe("SituationPal as a Case Desk", () => {
     const run = ev.reduce(applyCEvent, newRun("r", "x"));
     expect(run.visits.filter((v) => v.action === "read").length).toBeGreaterThan(0);
   });
-  it("reads promising pages in full (fetch first) and writes the evidence down as CSV and markdown files", async () => {
+  it("does NOT open any page when the search results already answer the pairs", async () => {
+    const asked: string[] = [];
+    const c = ctx(brain(), { fetchPage: async (u: string) => (asked.push(u), ok({ text: TEXT, status: 200, finalUrl: u })) });
+    const { ev } = await collect(runSituationAgent(c, "a shop"));
+    expect(asked).toEqual([]);
+    expect(ev.some((e) => e.kind === "step" && /still blocked/.test(e.label))).toBe(false);
+    expect(ev.some((e) => e.kind === "page")).toBe(false);
+    expect(card(ev).stop).toBe("best_found");
+    expect(c.session.files["artifacts/situation-sources.csv"]).toContain(",snippet,");
+  });
+  it("opens a page only for a rail the search results left blocked (fetch first), and writes the evidence as CSV and markdown", async () => {
     const asked: string[] = [];
     const FULL = `${TEXT} ${"Refunds are issued within thirty days of purchase. ".repeat(30)}`;
-    const c = ctx(brain(), { fetchPage: async (u: string) => (asked.push(u), ok({ text: FULL, status: 200, finalUrl: u })) });
+    const c = ctx(brain({ needsFullPage: true }), { fetchPage: async (u: string) => (asked.push(u), ok({ text: FULL, status: 200, finalUrl: u })) });
     const { ev } = await collect(runSituationAgent(c, "a shop"));
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.length).toBeLessThanOrEqual(4 * 4); // at most 4 full reads per round
+    expect(ev.some((e) => e.kind === "step" && /still blocked/.test(e.label))).toBe(true);
     const files = Object.keys(c.session.files);
     expect(files).toEqual(expect.arrayContaining(["artifacts/situation-cells.csv", "artifacts/situation-sources.csv", "artifacts/situation-probes.csv", "artifacts/situation-report.md"]));
     expect(files.some((f) => f.startsWith("artifacts/pages/"))).toBe(true);
     expect(c.session.files["artifacts/situation-sources.csv"]).toContain(",fetch,");
     expect(c.session.files["artifacts/situation-cells.csv"]).toContain("Stripe,refunds_and_disputes,yes");
-    expect(ev.filter((e) => e.kind === "file").length).toBeGreaterThan(3);
     // a page is never read twice
     expect(new Set(asked).size).toBe(asked.length);
   });
   it("when a plain fetch is blocked, the live browser reads it and the user can see it navigate (page event)", async () => {
-    const c = ctx(brain(), { fetchPage: async () => ({ ok: false as const, degraded: true as const, reason: "http 403" }), vm: { goto: async () => ok(null), snapshot: async () => ok({ url: PAGE.url, title: "Docs", text: TEXT.repeat(4), elements: [] }) } });
+    const c = ctx(brain({ needsFullPage: true }), { fetchPage: async () => ({ ok: false as const, degraded: true as const, reason: "http 403" }), vm: { goto: async () => ok(null), snapshot: async () => ok({ url: PAGE.url, title: "Docs", text: `${TEXT} ${"Refunds are issued within thirty days of purchase. ".repeat(30)}`, elements: [] }) } });
     const { ev } = await collect(runSituationAgent(c, "a shop"));
     expect(ev.some((e) => e.kind === "page" && e.url === PAGE.url)).toBe(true);
     expect(c.session.browserReads).toBeGreaterThan(0);

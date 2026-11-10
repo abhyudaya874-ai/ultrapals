@@ -1,4 +1,5 @@
 import type { ExamCard } from "@/lib/pals/card";
+import type { ChartSpec } from "@/lib/charts/spec";
 import type { DiffLine } from "./diff";
 import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
@@ -26,6 +27,8 @@ export type CEvent =
   | { kind: "term"; agent: string; id: string; command: string; state: RunState; out?: string; exit?: number; ms?: number }
   /** A file written (`patch` is the green/red diff against the old text) or read (`mode: "read"`, `patch` are numbered context rows). `preview` is the new text, capped. */
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string; patch?: DiffLine[]; cut?: number; mode?: "write" | "read" }
+  /** A chart UltraPal chose for a workspace table. `spec.data` is the table's own rows; `note` says when the chosen type did not fit and another was drawn. */
+  | { kind: "chart"; agent: string; id: string; spec: ChartSpec; note?: string; source?: string }
   /** Ask the UI to open an app artifact (newsroom, dashboard, timeline, proctor) as a tab. */
   | { kind: "open"; artifact: string; title: string }
   | { kind: "visit"; agent: string; id: string; action: "search" | "read"; label: string; url?: string; title?: string; via?: "tavily" | "exa" | "fetch" | "browser" | "terminal"; state: RunState; count?: number }

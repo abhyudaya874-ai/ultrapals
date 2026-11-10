@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { IconCheck, IconCopy, IconDownload } from "@/components/ui/icons";
 import { PREVIEW_CHARS, parseCsv } from "@/lib/computer/artifacts";
 import type { FileEdit } from "@/lib/computer/run";
+import { useAgent } from "./AgentProvider";
 import { DiffView } from "./DiffView";
 import { Markdown } from "./Markdown";
 import { baseName, displayName, fileKind } from "./panel-model";
@@ -41,6 +42,7 @@ function CsvTable({ text }: { text: string }) {
 
 /** One file as a tab: its content (table, markdown, JSON or text), the green/red diff of its last write, and the lines of its last read. */
 export function FileArtifact({ path, content, write, read }: { path: string; content: string; write?: FileEdit; read?: FileEdit }) {
+  const { send, busy } = useAgent();
   const kind = fileKind(path);
   const hasChanges = !!write?.patch && (write.adds > 0 || write.removes > 0);
   const hasRead = !!read?.patch;
@@ -79,6 +81,7 @@ export function FileArtifact({ path, content, write, read }: { path: string; con
               ))}
             </span>
           )}
+          {kind === "csv" && <button type="button" disabled={busy} onClick={() => void send(`Chart ${displayName(path)} with the best-fitting chart type and tell me what it shows.`)} className="mr-1 h-7 rounded-full border border-line bg-surface px-3 text-[12.5px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50" title="UltraPal picks the chart type that fits this table">Chart it</button>}
           <button type="button" onClick={() => void copy()} aria-label="Copy file text" title="Copy" className="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg">{copied ? <IconCheck className="size-4 text-ok" /> : <IconCopy className="size-4" />}</button>
           <button type="button" onClick={download} aria-label="Download file" title="Download" className="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"><IconDownload className="size-4" /></button>
         </span>

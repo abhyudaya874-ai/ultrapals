@@ -54,7 +54,7 @@ export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPat
     fetchPage: never,
     vision: never,
     automations: { create: async () => ({ ok: true as const, id: "auto-1" }) },
-    appData: { articles: () => [], verdicts: async () => [], proctor: () => ({ schedules: [], runs: [], cases: [] }) },
+    appData: { articles: () => [], verdicts: async () => [], automations: async () => [], proctor: () => ({ schedules: [], runs: [], cases: [] }) },
   };
   return { ...base, ...patch, vm: { ...base.vm, ...patch.vm }, term: { ...base.term, ...patch.term }, model: { ...base.model, ...patch.model } } as unknown as Deps;
 }
