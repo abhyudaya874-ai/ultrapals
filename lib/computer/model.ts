@@ -18,15 +18,11 @@ export const defaultModelDeps: ModelDeps = {
   models: [
     { provider: "groq", model: "openai/gpt-oss-120b" },
     { provider: "groq", model: "openai/gpt-oss-20b" },
-    { provider: "nvidia", model: "deepseek-ai/deepseek-v4.1-flash" },
-    { provider: "tokenrouter", model: "x-ai/grok-4.1-fast" },
     { provider: "bluesminds", model: "nvidia/nemotron-3.5-lightning-30b-a3b" },
-    { provider: "nvidia", model: "z-ai/glm-5.3-flash" },
-    { provider: "tokenrouter", model: "deepseek/deepseek-v4.1-flash" },
-    { provider: "bluesminds", model: "moonshotai/kimi-k3" },
-    { provider: "nvidia", model: "moonshotai/kimi-k2.6" },
-    { provider: "tokenrouter", model: "openai/gpt-oss-120b" },
-    { provider: "bluesminds", model: "openai/gpt-oss-20b" },
+    { provider: "nvidia", model: "nvidia/nemotron-3.5-lightning-30b-a3b" },
+    { provider: "bluesminds", model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" },
+    { provider: "bluesminds", model: "nvidia/nemotron-3-ultra-550b-a55b" },
+    { provider: "bluesminds", model: "meta/muse-glimmer-30b" },
     { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
     { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
     { provider: "openrouter", model: "openrouter/free" },
@@ -64,7 +60,8 @@ export async function* callModel(
     const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal, maxTokens: o.maxTokens ?? 900 });
     if (!opened.ok) {
       last = opened.reason;
-      if (/429|503|overload|rate/i.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 60_000);
+      if (/http (402|403|404|410)\b/.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 600_000);
+      else if (/429|503|overload|rate|timeout/i.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 60_000);
       continue;
     }
     let text = "";

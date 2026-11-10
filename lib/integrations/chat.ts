@@ -44,9 +44,14 @@ export const OPENROUTER_FREE_MODELS = [
   "nvidia/nemotron-3.5-super-vl:free",
   "openrouter/free",
 ] as const;
-export const NVIDIA_MODELS = ["deepseek-ai/deepseek-v4.1-flash", "z-ai/glm-5.3-flash", "moonshotai/kimi-k2.6"] as const;
-export const TOKENROUTER_MODELS = ["x-ai/grok-4.1-fast", "deepseek/deepseek-v4.1-flash", "openai/gpt-oss-120b"] as const;
-export const BLUESMINDS_MODELS = ["nvidia/nemotron-3.5-lightning-30b-a3b", "moonshotai/kimi-k3", "openai/gpt-oss-20b"] as const;
+export const NVIDIA_MODELS = ["nvidia/nemotron-3.5-lightning-30b-a3b"] as const; // live-probed 2026-11-10; deepseek/glm/minimax flash hung >40s, llama-3.3 and kimi-k2.6 are gone
+export const TOKENROUTER_MODELS = ["x-ai/grok-4.1-fast", "deepseek/deepseek-v4.1-flash", "openai/gpt-oss-120b"] as const; // key valid, account balance $0 on 2026-11-10: recharge, then add to the roster
+export const BLUESMINDS_MODELS = [
+  "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "nvidia/nemotron-3-ultra-550b-a55b",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+  "meta/muse-glimmer-30b",
+] as const; // kimi-k3 is end-of-life, gpt-oss-20b timed out
 
 export function isAllowedModel(provider: ChatProvider, model: string): boolean {
   switch (provider) {

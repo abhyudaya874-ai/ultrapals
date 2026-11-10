@@ -44,7 +44,8 @@ describe("provider allowlist", () => {
     expect(isAllowedModel("groq", "nvidia/nemotron-3-ultra-550b-a55b:free")).toBe(false);
     expect(isAllowedModel("nvidia", "openai/gpt-oss-120b")).toBe(false);
     expect(isAllowedModel("tokenrouter", "anthropic/claude-opus-5.5")).toBe(false);
-    expect(isAllowedModel("bluesminds", "nvidia/nemotron-3-ultra-550b-a55b")).toBe(false);
+    expect(isAllowedModel("bluesminds", "moonshotai/kimi-k3")).toBe(false);
+    expect(isAllowedModel("nvidia", "meta/llama-3.3-70b-instruct")).toBe(false);
   });
   it("every OpenRouter entry is ':free' or the free router", () => {
     for (const m of OPENROUTER_FREE_MODELS) expect(m.endsWith(":free") || m === "openrouter/free").toBe(true);

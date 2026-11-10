@@ -59,6 +59,15 @@ describe("callModel", () => {
     await drain(callModel("x", [], deps(open)));
     expect(tried).not.toContain("g/a");
   });
+  it("benches an unfunded or retired model (402/403/404/410) for 10 minutes, not 1", async () => {
+    let now = 1000;
+    const d: ModelDeps = { open: (async (p: "groq", m: string) => (m === "g/a" ? bad("tokenrouter http 403") : ok(p, m, sse({ content: "ok" })))) as unknown as typeof openChat, models: M, now: () => now };
+    await drain(callModel("x", [], d));
+    now += 120_000;
+    expect(orderModels(M, 0, now).map((m) => m.model)).not.toContain("g/a");
+    now += 600_000;
+    expect(orderModels(M, 0, now).map((m) => m.model)).toContain("g/a");
+  });
   it("falls back when a stream errors before content, and reports when everything fails", async () => {
     const err = `data: ${JSON.stringify({ error: { message: "overloaded" } })}\n\n`;
     const open = async (p: "groq", m: string) => (m === "g/a" ? ok(p, m, err) : ok(p, m, sse({ content: "fine" })));
