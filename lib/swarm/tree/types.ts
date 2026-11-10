@@ -27,7 +27,7 @@ export const SPAWNS: Record<Kind, readonly Kind[]> = {
   observe: [],
 };
 
-export const POLICY = { maxDepth: 4, maxNodes: 48, maxFanout: 8, maxLoopNodes: 8, maxLoopLive: 3, askShare: 0.5 } as const;
+export const POLICY = { maxDepth: 4, maxNodes: 48, maxFanout: 12, maxLoopNodes: 8, maxLoopLive: 3, askShare: 0.5 } as const;
 
 export const SpawnRequest = z.object({
   kind: Kind,

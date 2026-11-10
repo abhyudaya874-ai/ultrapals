@@ -57,7 +57,7 @@ export async function* callModel(
   agent: string,
   messages: ChatMessage[],
   deps: ModelDeps,
-  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number } = {},
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number; accept?: (text: string) => boolean } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   let last = "no model available";
   for (const m of orderModels(deps.models, o.round ?? 0, deps.now())) {
@@ -92,6 +92,7 @@ export async function* callModel(
       continue;
     }
     if (!text.trim()) { last = "empty reply"; continue; }
+    if (o.accept && !o.accept(text)) { last = `${m.model.split("/").pop()} replied but the reply was unusable`; continue; } // try the next model, not the next round
     return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider };
   }
   return { ok: false, error: `every allowlisted model failed: ${last}` };
@@ -106,7 +107,7 @@ export async function* callModelHedged(
   agent: string,
   messages: ChatMessage[],
   deps: ModelDeps,
-  o: { signal?: AbortSignal; round?: number; maxTokens?: number; modelTimeoutMs?: number } = {},
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; modelTimeoutMs?: number; accept?: (text: string) => boolean } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   const n = Math.max(1, Math.min(Math.floor(deps.hedge ?? 1), 3));
   if (n === 1) return yield* callModel(agent, messages, deps, o);

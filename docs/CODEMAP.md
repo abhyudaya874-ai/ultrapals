@@ -188,3 +188,10 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `process.ts`: `processLabel(run)`, `disclosureRows(run)`
 - `superpal-agent.ts`: `runSuperPals(ctx, rows, now?)` -> rows with `evidence`
 - `lib/pals/evidence.ts`: `pickEvidence(company, pages)`; `lib/pals/generate.ts`: `GenDeps.cache`, `CACHE_TTL_MS`
+
+## SituationPal (D-SITUATION)
+- `lib/pals/situation.ts`: `RAILS`, `NEEDS`, `parseNeeds`, `verifyCells`, `parseCells`, `mergeCells`, `unknownCells`, `queriesFor`, `scoreRails`, `buildSituationCard`, `summarizeSituation`, `classifierMessages`, `needsMessages`
+- `lib/pals/probe.ts`: `CHECKS`, `stripeRows`, `squareRows`, `paypalRows`, typed-error readers
+- `lib/integrations/rails.ts`: `probeStripe(runId)`, `probeSquare(runId)`, `probePayPal(run)` (capabilities `stripe`, `square`)
+- `lib/computer/situation-agent.ts`: `runSituationAgent(ctx, idea)`; `components/agent/SituationPanel.tsx`; `components/ui/Pill.tsx`
+- `lib/computer/model.ts`: `callModel`/`callModelHedged` take `accept(text)` so an unusable reply moves on to the next model

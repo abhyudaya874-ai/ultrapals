@@ -1,5 +1,6 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
+import { probePayPal, probeSquare, probeStripe } from "@/lib/integrations/rails";
 import { approveOrderOnBrowser } from "@/lib/integrations/paypal-approve";
 import { exaSearch } from "@/lib/integrations/exa";
 import { paypal } from "@/lib/paypal";
@@ -35,6 +36,8 @@ export interface Deps {
   /** Which SuperPal sandbox keys are present (never their values). Blank env -> {} so tests and builds never crash. */
   superKeys: () => Record<string, boolean>;
   orderStatus: (orderId: string) => Promise<AdapterResult<{ status: string }>>;
+  /** Sandbox probes for SituationPal. PayPal's is read-only; Stripe and Square run against THEIR test environments only. */
+  probes: { stripe: typeof probeStripe; square: typeof probeSquare; paypal: typeof probePayPal };
 }
 
 export const defaultDeps: Deps = {
@@ -54,6 +57,7 @@ export const defaultDeps: Deps = {
       return {};
     }
   },
+  probes: { stripe: probeStripe, square: probeSquare, paypal: probePayPal },
   orderStatus: async (orderId) => {
     const o = await paypal.getOrder(orderId, { signal: AbortSignal.timeout(8000) });
     return o.ok ? { ok: true, data: { status: o.orderStatus } } : degrade(`paypal order read: ${o.issue}`);

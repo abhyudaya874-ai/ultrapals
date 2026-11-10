@@ -46,3 +46,6 @@ body {
 .b-sch-event.met { background-color: #10b981; }
 .b-sch-event.unmet { background-color: #ef4444; }
 .b-sch-event.pending { background-color: #f59e0b; }
+/* D-UI O4: CSS-only motion, 200ms. Rows of the Process list appear one by one as the agents report in. */
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 200ms ease-out both; }

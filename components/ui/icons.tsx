@@ -43,5 +43,6 @@ export const IconClock = make([circ(12, 12, 8.5), "M12 7v5l3.5 2"]);
 export const IconPlug = make(["M12 22v-5", "M9 8V2", "M15 8V2", "M18 8v5a4 4 0 01-4 4h-4a4 4 0 01-4-4V8z"]);
 export const IconPencil = make(["M17 3l4 4L8 20l-5 1 1-5L17 3z", "M14.5 5.5l4 4"]);
 export const IconGlobe = make(["M12 3a9 9 0 100 18 9 9 0 000-18z", "M3 12h18", "M12 3c2.5 2.4 3.8 5.4 3.8 9s-1.3 6.6-3.8 9c-2.5-2.4-3.8-5.4-3.8-9S9.5 5.4 12 3z"]);
+export const IconMail = make(["M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z", "M3 7l9 6 9-6"]);
 export const IconStop = make("M7 7h10v10H7z");
 export const IconDollar = make(["M12 2v20", "M17 6.5H9.8a3.3 3.3 0 000 6.6h4.4a3.3 3.3 0 010 6.6H6"]);

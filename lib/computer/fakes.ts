@@ -50,6 +50,7 @@ export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPat
     search: [],
     research: async function* () { /* nothing */ },
     superKeys: () => ({}),
+    probes: { stripe: never, square: never, paypal: never },
   };
   return { ...base, ...patch, vm: { ...base.vm, ...patch.vm }, term: { ...base.term, ...patch.term }, model: { ...base.model, ...patch.model } } as unknown as Deps;
 }

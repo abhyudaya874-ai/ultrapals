@@ -1,4 +1,5 @@
 import type { ExamCard } from "@/lib/pals/card";
+import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
 
@@ -70,6 +71,7 @@ export interface Run {
   liveViewUrl?: string;
   page?: { url: string; title: string };
   exam?: ExamCard;
+  situation?: SituationCard;
   spawns: SpawnNote[];
 }
 
@@ -117,6 +119,8 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       return onAgent(r, e.agent, (a) => ({ ...a, files: upsert(a.files, { id: e.id, path: e.path, created: e.created, adds: e.adds, removes: e.removes, preview: e.preview }) }));
     case "ladder":
       return { ...r, exam: e.card };
+    case "situation":
+      return { ...r, situation: e.card };
     case "sources":
       return { ...r, sources: e.sources };
     case "workspace":

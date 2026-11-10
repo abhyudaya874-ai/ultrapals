@@ -1,7 +1,8 @@
 import type { ExamCard } from "@/lib/pals/card";
+import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
 
-export type AgentRole = "main" | "research" | "browser" | "terminal" | "promise" | "rival" | "superpal";
+export type AgentRole = "main" | "research" | "browser" | "terminal" | "promise" | "rival" | "superpal" | "situation" | "sandbox";
 export type RunState = "running" | "ok" | "error";
 
 /** Text the user selected on screen and added to the chat (Devin-style "Add to chat"). */
@@ -24,6 +25,7 @@ export type CEvent =
   | { kind: "term"; agent: string; id: string; command: string; state: RunState; out?: string; exit?: number; ms?: number }
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string }
   | { kind: "ladder"; agent: string; card: ExamCard }
+  | { kind: "situation"; agent: string; card: SituationCard }
   | { kind: "sources"; sources: Source[] }
   | { kind: "workspace"; liveViewUrl: string }
   | { kind: "page"; url: string; title: string }

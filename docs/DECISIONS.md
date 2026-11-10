@@ -199,3 +199,17 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
 - **O23 — Exam scorecard chart (`lib/pals/chart.ts`, `components/agent/ExamChart.tsx`).** A chart spec holds a kind, a reason and row ids
   only; every plotted number is looked up from the sealed card, so no value can be invented. A row that was not measured is drawn as a
   dashed break, never a zero. Same rows give the same geometry. A model-chosen spec is not wired yet; the default spec is deterministic.
+
+## 17. D-SITUATION: SituationPal compares rails for an idea (authorized 2026-11-10)
+
+- **O24 — SituationPal** takes an idea, picks its payment needs from a CLOSED list (`lib/pals/situation.ts` NEEDS; the model cannot invent
+  one), gives every rail (PayPal + 8 rivals) its own Pal, and researches with Tavily and Exa in rounds (max 3, max 27 searches) until each
+  (rail, need) pair has a cited answer or a budget ends. The card records why it stopped and how many pairs are still unknown.
+- **Cite or die per cell.** A classified cell survives only if its url was fetched for that rail, its quote is a verbatim substring of the page,
+  the page names the rail, and the need was one of the idea's. Time and operator are the fetcher's. Unknown is a band (fit..upper), never a zero.
+- **Real sandbox checks, structure only (O15-O17).** `lib/integrations/rails.ts`: Stripe TEST mode (`sk_test_` only, capability off for any other
+  prefix) and the Square SANDBOX (host hard-coded) each run: bad request -> typed error, charge with the documented test token, same-key
+  replay, refund, refund read-back. PayPal is READ-ONLY (a GET of a missing order for its typed error, plus the last real promise run); what
+  needs a PayPal write says why it was not measured. The agent still holds no PayPal write tool.
+- **Not used:** the Coinbase CDP key pasted by the owner. CDP has no sandbox, so it stays out of `.env.local`; X402Pal is still measured from the run log.
+- **The future is an inference.** Fit is today's published support weighted by the idea. Nothing in the card is a forecast and the summary says so.

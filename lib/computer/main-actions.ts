@@ -3,7 +3,7 @@ import { extractJson } from "@/lib/browse/actions";
 import { ARTICLES } from "@/lib/newsroom";
 
 export const MainAction = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("delegate"), agent: z.enum(["research", "browser", "terminal", "promise", "rival"]), task: z.string().trim().min(3).max(1500) }),
+  z.object({ action: z.literal("delegate"), agent: z.enum(["research", "browser", "terminal", "promise", "rival", "situation"]), task: z.string().trim().min(3).max(1500) }),
   z.object({ action: z.literal("answer"), text: z.string().trim().min(1).max(6000) }),
 ]);
 export type MainAction = z.infer<typeof MainAction>;
@@ -34,13 +34,14 @@ const PREMIUM_LINE =
 
 export const MAIN_SYSTEM =
   "You are UltraPal, the lead of a team of Pals (ResearchPal, BrowserPal, TerminalPal, PromisePal) that works for the user. You answer directly when you can, and otherwise delegate to your team. Reply with ONE JSON object and nothing else:\n" +
-  '{"thought":"<short reason>","action":"delegate","agent":"research|browser|terminal|promise|rival","task":"<complete instruction>"}  or  {"thought":"...","action":"answer","text":"<final answer>"}\n' +
+  '{"thought":"<short reason>","action":"delegate","agent":"research|browser|terminal|promise|rival|situation","task":"<complete instruction>"}  or  {"thought":"...","action":"answer","text":"<final answer>"}\n' +
   "Your team:\n" +
   "- research: searches the web (Tavily and Exa) and writes a cited answer. Best for facts, news, documentation, comparisons.\n" +
   "- browser: drives a real, visible web browser. Best for visiting a specific page, reading live content, forms, anything that needs interaction.\n" +
   "- terminal: a Linux VM shell (Node 22, npm, Python 3, no git). Best for creating projects, writing and running code, installing packages, building a site and serving it; the browser agent can then open http://localhost:<port> in the same VM.\n" +
   "- promise: the payments agent. It creates and settles Standing Promises through the app's own money path and can unlock paywalled content (e.g. the Newsroom's premium stories). Best for anything about paying, prices, paywalls, orders, or the user's promises. It reports the promise id and the unlocked URL; hand those to the browser agent to read the content. When asking it to unlock a Newsroom story, NAME the article slug (they are listed on /newsroom).\n" +
   "- rival: the exam agent. Give it a deal or contract in plain words; it researches how that kind of deal really fails (Tavily and Exa), builds cited rivals, attacks the real judge with their hostile worlds and reports SEALED, CONDITIONAL or REFUSED with a ladder. DEFAULT for anything like 'examine this deal', 'is this deal safe', 'stress-test this promise' or 'what could go wrong with this payment' - prefer it over research for those. It examines only; it never moves money.\n" +
+  "- situation: SituationPal. Give it a business or product idea in plain words (e.g. 'a marketplace for AI-written reports with tiny payments'). It works out which payment needs the idea really has, researches PayPal and eight rival rails with Tavily and Exa in rounds until each need has a cited answer or the budget ends, runs real sandbox checks on Stripe, Square and PayPal, and returns a ranked, charted comparison. DEFAULT for 'which payment provider is best for my idea', 'compare PayPal with Stripe/Square for X' and 'what should I build on'. It never moves money.\n" +
   "Places in this app the browser agent can open at THIS APP's public URL: /newsroom (news stories; premium ones are $0.01 paywalled), /p?id=<promise id> (a promise's page), /board, /timeline. " + PREMIUM_LINE +
   "The Newsroom's premium articles unlock only through the promise agent.\n" +
   "Subagents cannot see this conversation: write each task as a complete, self-contained instruction (include URLs, file names, ports, and what to report back). " +

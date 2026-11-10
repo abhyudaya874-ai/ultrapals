@@ -1,17 +1,19 @@
 "use client";
 import { formatDuration } from "@/components/thread/format";
 import { Disclosure } from "@/components/ui/Disclosure";
-import { IconAgent, IconDollar, IconFile, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
+import { Pill } from "@/components/ui/Pill";
+import { IconAgent, IconMail, IconDollar, IconFile, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
 import type { AgentRole } from "@/lib/computer/events";
 import { palName } from "@/lib/computer/pals";
 import { disclosureRows, processLabel } from "@/lib/computer/process";
 import { subagents, type AgentRow, type Run } from "@/lib/computer/run";
 import { AnswerText } from "./AnswerText";
 import { ExamPanel } from "./ExamPanel";
+import { SituationPanel } from "./SituationPanel";
 import { useAgent } from "./AgentProvider";
 
 const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
-const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar, rival: IconList, superpal: IconList };
+const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar, rival: IconList, superpal: IconList, situation: IconList, sandbox: IconTerminal };
 const CHIP = "inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg";
 
 const nameOf = palName;
@@ -49,32 +51,36 @@ export function RunView({ run }: { run: Run }) {
       </p>
 
       {rows.length > 0 && (
-        <Disclosure testId="process" label={processLabel(run)} meta={`${subs.length} agent${subs.length === 1 ? "" : "s"}${run.model ? ` · ${run.model}` : ""}`}>
-          <ul className="ml-1 space-y-0.5 border-l border-line pl-3.5">
-            {rows.map(({ agent: a, depth }) => {
+        <Disclosure key={String(running)} testId="process" defaultOpen={running} label={processLabel(run)} meta={`${subs.length} agent${subs.length === 1 ? "" : "s"}${run.model ? ` · ${run.model}` : ""}`}>
+          <ul className="ml-1 space-y-1 border-l border-line pl-3.5">
+            {run.timeline.map((t) => {
+              if (t.t === "message") {
+                const m = run.messages.find((x) => x.id === t.id);
+                if (!m) return null;
+                const out = m.id.startsWith("to-"); // ids are to-<agent> going down, from-<agent> coming back
+                const who = out ? m.to : m.from;
+                return (
+                  <li key={t.id} className="rise flex min-h-9 flex-wrap items-center gap-2 px-2 text-[13.5px] text-fg-muted" data-testid="message-row">
+                    <IconMail className="size-4 shrink-0" />
+                    <span>{out ? "Sent agent message to" : "Message from"}</span>
+                    <Pill name={nameOf(who)} icon={<IconAgent className="size-3.5 text-fg-muted" />}>{m.text}</Pill>
+                  </li>
+                );
+              }
+              const row = rows.find((r) => r.agent.id === t.id);
+              if (!row) return null;
+              const a = row.agent;
               const Icon = ICON[a.role];
-              const sent = run.messages.filter((m) => m.to === a.id && m.from !== a.id);
-              const got = run.messages.filter((m) => m.from === a.id);
               return (
-                <li key={a.id} style={{ marginLeft: depth * 16 }}>
+                <li key={a.id} className="rise" style={{ marginLeft: row.depth * 16 }}>
                   <button type="button" data-testid="agent-row" onClick={() => openWorkspace(a.role === "browser" ? "browser" : a.role === "terminal" ? "terminal" : "agent", a.id)}
                     className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13.5px] hover:bg-surface-2">
                     <span className={`inline-block size-2 shrink-0 rounded-full ${DOT[a.state]}`} />
                     <Icon className="size-4 shrink-0 text-fg-muted" />
-                    <span className="shrink-0">{a.title}</span>
+                    <span className="shrink-0 text-fg">{a.title}</span>
                     <span className="truncate text-fg-dim">{summary(a)}</span>
                     <span className="ml-auto shrink-0 tabular-nums text-fg-dim">{a.ms !== undefined ? formatDuration(a.ms) : ""}</span>
                   </button>
-                  {sent.map((m) => (
-                    <Disclosure key={m.id} label={`Sent agent message to ${nameOf(a.id)}`}>
-                      <p className="whitespace-pre-wrap pb-2 pl-1 text-[12.5px] leading-relaxed text-fg-dim">{m.text}</p>
-                    </Disclosure>
-                  ))}
-                  {got.map((m) => (
-                    <Disclosure key={m.id} label={`Message from ${nameOf(a.id)}`}>
-                      <p className="whitespace-pre-wrap pb-2 pl-1 text-[12.5px] leading-relaxed text-fg-dim">{m.text}</p>
-                    </Disclosure>
-                  ))}
                 </li>
               );
             })}
@@ -102,6 +108,7 @@ export function RunView({ run }: { run: Run }) {
       )}
 
       {run.exam && <ExamPanel card={run.exam} />}
+      {run.situation && <SituationPanel card={run.situation} />}
 
       {run.answer && <AnswerText text={run.answer} sources={run.sources} onOpen={() => openWorkspace("sources")} />}
       {running && !run.answer && <div className="h-4 w-36 animate-pulse rounded bg-surface-2" />}

@@ -11,13 +11,19 @@ export const PAL_NAMES: Record<AgentRole, string> = {
   promise: "PromisePal",
   rival: "RivalPal",
   superpal: "SuperPal",
+  situation: "SituationPal",
+  sandbox: "SandboxPal",
 };
 
+const RAIL_PAL: Record<string, string> = { paypal: "PayPalPal", x402: "X402Pal", apple: "ApplePal" };
+const railPal = (slug: string): string => RAIL_PAL[slug] ?? `${slug.replace(/^./, (c) => c.toUpperCase())}Pal`;
 const isRole = (s: string): s is AgentRole => s in PAL_NAMES;
 
 /** Pure. "main" -> UltraPal, "research-3" -> ResearchPal; an unknown id falls back to a capitalised id so nothing renders blank. */
 export function palName(id: string): string {
-  if (id.startsWith("superpal-")) return `${id.slice(9).replace(/^./, (c) => c.toUpperCase())}Pal`; // superpal-stripe -> StripePal
+  if (id.startsWith("superpal-")) return railPal(id.slice(9)); // superpal-stripe -> StripePal
+  if (id.startsWith("sandbox-")) return "SandboxPal";
+  if (id.startsWith("research-")) return "ResearchPal";
   const role = id.replace(/-\d+$/, "");
   return isRole(role) ? PAL_NAMES[role] : role.replace(/^./, (c) => c.toUpperCase());
 }

@@ -18,8 +18,8 @@ const GEN_CACHE: NonNullable<GenDeps["cache"]> = new Map(); // same deal within 
 export async function* runRivalAgent(ctx: SubCtx, task: string): AsyncGenerator<CEvent, string> {
   const { agent, deps, signal } = ctx;
   let round = 0;
-  const ask: GenDeps["ask"] = async (messages: ChatMessage[], sig) => {
-    const g = callModelHedged(agent, messages, deps.model, { signal: sig ?? signal, round: round++, maxTokens: 1800 });
+  const ask: GenDeps["ask"] = async (messages: ChatMessage[], sig, accept) => {
+    const g = callModelHedged(agent, messages, deps.model, { signal: sig ?? signal, round: round++, maxTokens: 2400, accept });
     for (;;) {
       const n = await g.next();
       if (n.done) return n.value.ok ? n.value.text : null;

@@ -46,3 +46,30 @@ describe("callModelHedged", () => {
     expect(n).toBe(1);
   });
 });
+
+describe("accept: an unusable reply is not a win", () => {
+  it("callModel moves to the next model when the first reply fails validation", async () => {
+    const open = (async (p: "groq", m: string) => ok(p, m, m === "g/a" ? "I cannot help with that" : '{"rivals":[1]}')) as unknown as typeof openChat;
+    const g = callModelHedged("x", [], { open, models: M, now: () => 1 }, { accept: (t) => t.includes("rivals") });
+    let r;
+    for (;;) { const n = await g.next(); if (n.done) { r = n.value; break; } }
+    expect(r).toMatchObject({ ok: true, text: '{"rivals":[1]}' });
+  });
+  it("a fast garbage reply does not beat a slower good one when racing", async () => {
+    const open = (async (p: "groq", m: string, _x: unknown, o: { signal?: AbortSignal }) => {
+      if (m === "g/b") return new Promise((res) => setTimeout(() => res(ok(p, m, '{"rivals":[1]}')), 30));
+      void o;
+      return ok(p, m, "garbage");
+    }) as unknown as typeof openChat;
+    const r = await run2({ open, models: M, now: () => 1, hedge: 2 }, (t) => t.includes("rivals"));
+    expect(r).toMatchObject({ ok: true, text: '{"rivals":[1]}' });
+  });
+  it("reports failure when every model's reply is unusable", async () => {
+    const open = (async (p: "groq", m: string) => ok(p, m, "garbage")) as unknown as typeof openChat;
+    expect((await run2({ open, models: M, now: () => 1, hedge: 2 }, () => false)).ok).toBe(false);
+  });
+});
+async function run2(deps: ModelDeps, accept: (t: string) => boolean) {
+  const g = callModelHedged("x", [], deps, { accept });
+  for (;;) { const n = await g.next(); if (n.done) return n.value; }
+}

@@ -141,3 +141,18 @@ describe("generateRivals speed", () => {
     expect(out.pages.length).toBeGreaterThan(0);
   });
 });
+
+describe("generateRivals: a reply with no rivals is retried, not accepted", () => {
+  const good = rivalJson("re-listed the item under a new id");
+  it("asks again with the reason when the first reply parses to zero rivals", async () => {
+    const d = mk(['{"queries":["logo designer scam stories"]}', '{"rivals":[]}', good]);
+    const { out } = await drain(generateRivals("pay a designer", d));
+    expect(out.entries).toHaveLength(1);
+    expect(d.asked.at(-1)).toContain("your reply had no rivals");
+  });
+  it("says WHY nothing was kept when every reply was empty", async () => {
+    const { steps, out } = await drain(generateRivals("pay a designer", mk(['{"queries":["logo designer scam stories"]}', '{"rivals":[]}'])));
+    expect(out.entries).toEqual([]);
+    expect(steps.at(-1)?.detail).toContain("no usable rival");
+  });
+});

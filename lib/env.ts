@@ -33,6 +33,8 @@ const Schema = z.object({
   CAP_BLUESMINDS: flag,
   CAP_TAVILY: flag,
   CAP_EXA: flag,
+  CAP_STRIPE: flag,
+  CAP_SQUARE: flag,
 
   // --- vendor credentials (all optional: a missing key means that capability is off) ---
   CHANNEL3_API_KEY: opt(),
