@@ -49,3 +49,6 @@ body {
 /* D-UI O4: CSS-only motion, 200ms. Rows of the Process list appear one by one as the agents report in. */
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .rise { animation: rise 200ms ease-out both; }
+/* The prompt box draws its own focus state (the box border); the global ring would box the text area inside it. */
+textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
+.dock-focus:focus-within { border-color: var(--color-accent); }

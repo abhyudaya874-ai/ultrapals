@@ -91,6 +91,8 @@ export interface WriteResult {
   created: boolean;
   adds: number;
   removes: number;
+  /** What the file held before (empty for a new file), so the caller can show a real diff. */
+  before: string;
 }
 
 export async function writeFileInVm(vm: string, path: string, content: string): Promise<AdapterResult<WriteResult>> {
@@ -104,7 +106,7 @@ export async function writeFileInVm(vm: string, path: string, content: string): 
     const old = created ? "" : before.out.replace(/\n?__EXISTS=1\s*$/, "");
     const w = await sh(vm, `mkdir -p "$(dirname ${shq(abs)})" && echo ${shq(Buffer.from(content, "utf8").toString("base64"))} | base64 -d > ${shq(abs)}`, 20, "/");
     if (w.exit !== 0) return degrade(`write failed: ${w.out.slice(0, 200)}`);
-    return { ok: true, data: { path: abs, created, ...lineDiffStats(old, content) } };
+    return { ok: true, data: { path: abs, created, ...lineDiffStats(old, content), before: old } };
   });
 }
 

@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { PromiseState } from "@/db/schema";
 import { useAgent } from "@/components/agent/AgentProvider";
 import { APP_NAME, PAL_NAMES } from "@/lib/computer/pals";
-import { IconAgent, IconBoard, IconClock, IconGlobe, IconPlus, IconSearch } from "@/components/ui/icons";
+import { IconAgent, IconBolt, IconDollar, IconLayers, IconPlus, IconSearch } from "@/components/ui/icons";
 
 interface Item { id: string; title: string; state: PromiseState; createdAt: string }
 interface Cap { id: string; on: boolean; note: string }
@@ -17,11 +17,11 @@ const DOT: Record<PromiseState, string> = {
   declined: "bg-bad",
   released: "bg-fg-dim",
 };
+// The old Dashboard, Timeline and Newsroom pages are artifacts now (open them from the panel or ask UltraPal); their URLs still work.
 const NAV = [
-  { href: "/", label: "New promise", Icon: IconPlus },
-  { href: "/board", label: "Dashboard", Icon: IconBoard },
-  { href: "/timeline", label: "Timeline", Icon: IconClock },
-  { href: "/newsroom", label: "Newsroom", Icon: IconGlobe },
+  { href: "/automations", label: "Automations", Icon: IconBolt },
+  { href: "/artifacts", label: "Artifacts", Icon: IconLayers },
+  { href: "/new", label: "New promise", Icon: IconDollar },
 ] as const;
 
 export function Sidebar() {
@@ -55,7 +55,9 @@ export function Sidebar() {
 
   const shown = useMemo(() => (items ?? []).filter((i) => i.title.toLowerCase().includes(q.trim().toLowerCase())), [items, q]);
   const row = "flex h-10 items-center gap-3 rounded-lg px-3 text-[14px]";
-  const { open: agentOpen, toggle } = useAgent();
+  const { open: agentOpen, toggle, newChat } = useAgent();
+  const router = useRouter();
+  const home = path === "/";
   const onCount = caps?.filter((c) => c.on).length ?? 0;
 
   return (
@@ -68,6 +70,11 @@ export function Sidebar() {
       </div>
       {find && <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter promises" className="mx-3 mb-2 h-9 rounded-lg border border-line bg-canvas px-3 text-[14px] outline-none placeholder:text-fg-dim" />}
       <ul className="px-2">
+        <li>
+          <button type="button" data-testid="new-chat" onClick={() => { newChat(); router.push("/"); }} className={`${row} w-full ${home ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>
+            <IconPlus className="size-[18px]" />New chat
+          </button>
+        </li>
         {NAV.map(({ href, label, Icon }) => (
           <li key={href}>
             <Link href={href} className={`${row} ${path === href ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>
@@ -75,11 +82,11 @@ export function Sidebar() {
             </Link>
           </li>
         ))}
-        <li>
+        {!home && <li>
           <button type="button" data-testid="open-agent" onClick={() => toggle()} aria-pressed={agentOpen} className={`${row} w-full ${agentOpen ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>
             <IconAgent className="size-[18px]" />{PAL_NAMES.main}<kbd className="ml-auto font-sans text-[11px] text-fg-dim">Ctrl+L</kbd>
           </button>
-        </li>
+        </li>}
       </ul>
       <h2 className="px-5 pb-1 pt-5 text-[12px] font-medium uppercase tracking-wide text-fg-dim">Promises</h2>
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2" data-testid="recents">

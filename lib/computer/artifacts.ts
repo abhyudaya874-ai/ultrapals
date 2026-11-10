@@ -1,10 +1,12 @@
-import { lineDiffStats } from "@/lib/integrations/kterm";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
 import type { Session } from "./session";
+import { diffLines } from "./diff";
 
 const MAX_FILES = 40;
 const MAX_FILE = 60_000;
+/** How much of a file travels with its `file` event: enough to open it in the artifact panel. */
+export const PREVIEW_CHARS = 20_000;
 const MAX_TOTAL = 400_000;
 
 type Cell = string | number | boolean | null | undefined;
@@ -41,7 +43,8 @@ export function putFile(files: Readonly<Record<string, string>>, path: string, c
     keys = Object.keys(next);
   }
   if (!(path in next)) return null;
-  return { files: next, created: old === undefined, ...lineDiffStats(old ?? "", body) };
+  const { adds, removes } = diffLines(old ?? "", body, { maxLines: 10 });
+  return { files: next, created: old === undefined, adds, removes };
 }
 
 /**
@@ -52,10 +55,12 @@ export function putFile(files: Readonly<Record<string, string>>, path: string, c
 export async function* writeArtifact(ctx: SubCtx, name: string, content: string): AsyncGenerator<CEvent, boolean> {
   const path = artifactPath(name);
   if (!path) return false;
+  const before = ctx.session.files[path] ?? "";
   const r = putFile(ctx.session.files, path, content);
   if (!r) return false;
   ctx.session.files = r.files;
-  yield { kind: "file", agent: ctx.agent, id: path, path: `/workspace/${path}`, created: r.created, adds: r.adds, removes: r.removes, preview: r.files[path].slice(0, 4000) };
+  const d = diffLines(before, r.files[path]);
+  yield { kind: "file", agent: ctx.agent, id: path, path: `/workspace/${path}`, created: r.created, adds: r.adds, removes: r.removes, preview: r.files[path].slice(0, PREVIEW_CHARS), patch: d.lines, cut: d.cut, mode: "write" };
   const vm = ctx.session.vm;
   if (vm) {
     try {

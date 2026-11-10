@@ -1,6 +1,7 @@
 import type { ExamCard } from "@/lib/pals/card";
 import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
+import type { DiffLine } from "./diff";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
 import { hostOfUrl, type Visit } from "./visits";
 
@@ -26,6 +27,9 @@ export interface FileEdit {
   adds: number;
   removes: number;
   preview: string;
+  patch?: DiffLine[];
+  cut?: number;
+  mode?: "write" | "read";
 }
 export interface AgentRow {
   id: string;
@@ -59,6 +63,8 @@ export interface Run {
   id: string;
   prompt: string;
   attachments: Attachment[];
+  /** Thumbnails of the pictures sent with the prompt (browser only; the server never stores them). */
+  images?: { id: string; name: string; url: string }[];
   agents: AgentRow[];
   messages: Message[];
   timeline: TimelineItem[];
@@ -78,8 +84,8 @@ export interface Run {
   spawns: SpawnNote[];
 }
 
-export const newRun = (id: string, prompt: string, attachments: Attachment[] = []): Run => ({
-  id, prompt, attachments, agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running", visits: [], spawns: [],
+export const newRun = (id: string, prompt: string, attachments: Attachment[] = [], images: { id: string; name: string; url: string }[] = []): Run => ({
+  id, prompt, attachments, ...(images.length ? { images } : {}), agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running", visits: [], spawns: [],
 });
 
 const OUT_CAP = 20_000; // the UI keeps the tail of a terminal block; the model gets its own, smaller cap
@@ -119,7 +125,7 @@ export function applyCEvent(r: Run, e: CEvent): Run {
         return { ...a, terms: upsert(a.terms, { id: e.id, command: e.command, state: e.state, out, exit: e.exit ?? prev?.exit, ms: e.ms ?? prev?.ms }) };
       });
     case "file":
-      return onAgent(r, e.agent, (a) => ({ ...a, files: upsert(a.files, { id: e.id, path: e.path, created: e.created, adds: e.adds, removes: e.removes, preview: e.preview }) }));
+      return onAgent(r, e.agent, (a) => ({ ...a, files: upsert(a.files, { id: e.id, path: e.path, created: e.created, adds: e.adds, removes: e.removes, preview: e.preview, patch: e.patch, cut: e.cut, mode: e.mode }) }));
     case "visit": {
       const { kind: _k, ...v } = e;
       // one entry per id; the same page (canonical URL) read by two agents is one visit
@@ -138,6 +144,8 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       const seen = r.visits.some((v) => v.action === "read" && v.url === e.url);
       return { ...r, page: { url: e.url, title: e.title }, visits: host && !seen && !/^https?:\/\/(localhost|127\.)/.test(e.url) ? [...r.visits, { id: `read:${e.url}`, agent: "browser", action: "read" as const, label: host, url: e.url, title: e.title, via: "browser" as const, state: "ok" as const }].slice(-300) : r.visits };
     }
+    case "open":
+      return r; // the provider opens the tab as the event streams by; the run itself has nothing to keep
     case "answer":
       return { ...r, answer: r.answer + e.delta };
     case "done":

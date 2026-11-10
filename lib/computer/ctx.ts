@@ -1,6 +1,7 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
 import { fetchPageText } from "@/lib/integrations/webpage";
+import { describeImages } from "@/lib/integrations/vision";
 import { probePayPal, probeSquare, probeStripe } from "@/lib/integrations/rails";
 import { approveOrderOnBrowser } from "@/lib/integrations/paypal-approve";
 import { exaSearch } from "@/lib/integrations/exa";
@@ -40,6 +41,8 @@ export interface Deps {
   /** Sandbox probes for SituationPal. PayPal's is read-only; Stripe and Square run against THEIR test environments only. */
   /** Reads one public page as text (SSRF-guarded). The reader falls back to the live browser and then the terminal when this fails. */
   fetchPage: typeof fetchPageText;
+  /** Reads the user's attached pictures with a vision model and returns plain text. The planner never receives pixels. */
+  vision: typeof describeImages;
   probes: { stripe: typeof probeStripe; square: typeof probeSquare; paypal: typeof probePayPal };
 }
 
@@ -61,6 +64,7 @@ export const defaultDeps: Deps = {
     }
   },
   fetchPage: fetchPageText,
+  vision: describeImages,
   probes: { stripe: probeStripe, square: probeSquare, paypal: probePayPal },
   orderStatus: async (orderId) => {
     const o = await paypal.getOrder(orderId, { signal: AbortSignal.timeout(8000) });

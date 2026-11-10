@@ -1,8 +1,10 @@
+import type { InImage } from "@/lib/integrations/vision";
 import { usedSources } from "@/lib/research/citations";
 import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
+import { IMAGE_INSTRUCTION } from "./images";
 import { answerTextSoFar } from "./json-text";
 import { workspaceDigest } from "./artifacts";
 import { callModel, type ModelResult } from "./model";
@@ -15,12 +17,19 @@ import { pushHistory, type Session } from "./session";
 import { runTerminalAgent } from "./terminal-agent";
 
 const MAX_ROUNDS = 6;
+const MAX_ROUNDS_CAP = 10;
 
 export interface MainInput {
   prompt: string;
   attachments: Attachment[];
   path: string;
   pageContext: string | null;
+  /** Pictures the user attached (already resized by the browser). A vision model reads them; the planner only ever sees the text. */
+  images?: InImage[];
+  /** Planning rounds before UltraPal must answer (the model level sets it). Default 6. */
+  maxRounds?: number;
+  /** Delegates this run may not use (an unattended automation never gets PromisePal: nobody is there to approve money). */
+  deny?: readonly string[];
 }
 
 const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent, rival: runRivalAgent, situation: runSituationAgent } as const;
@@ -35,14 +44,32 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
   const results: { agent: string; task: string; result: string }[] = [];
   yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "running" };
   let invalid = 0;
+  const rounds = Math.max(2, Math.min(input.maxRounds ?? MAX_ROUNDS, MAX_ROUNDS_CAP));
 
-  for (let round = 1; round <= MAX_ROUNDS; round++) {
+  // Pictures: the planner is text-only, so a vision model reads them first and its description becomes data in the prompt.
+  let imageNotes: string[] = [];
+  if (input.images?.length) {
+    const n = input.images.length;
+    const label = `Reading ${n} image${n === 1 ? "" : "s"}`;
+    yield { kind: "step", agent: "main", id: "main-img", label, state: "running" };
+    const t = Date.now();
+    const r = await deps.vision(input.images, IMAGE_INSTRUCTION, { signal });
+    if (r.ok) {
+      imageNotes = [`${input.images.map((i) => i.name).join(", ")}: ${r.data.text.slice(0, 3000)}`];
+      yield { kind: "step", agent: "main", id: "main-img", label: `Read ${n} image${n === 1 ? "" : "s"}`, state: "ok", detail: r.data.model, ms: Date.now() - t };
+    } else {
+      imageNotes = [`(the user attached ${n} image${n === 1 ? "" : "s"} but they could not be read: ${r.reason}. Say so; do not guess what they show.)`];
+      yield { kind: "step", agent: "main", id: "main-img", label, state: "error", detail: r.reason, ms: Date.now() - t };
+    }
+  }
+
+  for (let round = 1; round <= rounds; round++) {
     if (signal?.aborted) return;
     const messages = [
       { role: "system" as const, content: MAIN_SYSTEM },
       {
         role: "user" as const,
-        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === MAX_ROUNDS, files: workspaceDigest(session.files) }),
+        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === rounds, files: workspaceDigest(session.files), images: imageNotes }),
       },
     ];
     // The final answer is streamed word by word as the model writes it (not dumped at the end); `streamed` is what the user already saw.
@@ -84,6 +111,10 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       return;
     }
 
+    if (input.deny?.includes(a.agent)) {
+      results.push({ agent: "system", task: `delegate to ${a.agent}`, result: `${a.agent} is not available in this run. Use another agent or answer with what you have.` });
+      continue;
+    }
     const id = `${a.agent}-${++session.seq}`;
     const ts = Date.now();
     yield { kind: "message", id: `to-${id}`, from: "main", to: id, text: a.task };

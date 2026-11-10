@@ -63,6 +63,14 @@ describe("writeArtifact", () => {
     await collect(writeArtifact(c, "m.md", "kept\n"));
     expect(c.session.files["artifacts/m.md"]).toBe("kept\n");
   });
+  it("carries a green/red patch against what the file held before", async () => {
+    const c = ctx();
+    const first = await collect(writeArtifact(c, "n.md", "one\ntwo\n"));
+    expect(first.ev[0]).toMatchObject({ mode: "write", patch: [{ op: "add", text: "one", b: 1 }, { op: "add", text: "two", b: 2 }] });
+    const second = await collect(writeArtifact(c, "n.md", "one\nTWO\n"));
+    expect(second.ev[0]).toMatchObject({ created: false, adds: 1, removes: 1 });
+    expect((second.ev[0] as { patch: { op: string }[] }).patch.map((l) => l.op)).toEqual(["ctx", "del", "add"]);
+  });
   it("refuses an unsafe name without writing", async () => {
     const c = ctx();
     expect((await collect(writeArtifact(c, "../x.csv", "a"))).ret).toBe(false);

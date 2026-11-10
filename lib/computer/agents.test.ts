@@ -82,7 +82,7 @@ describe("terminal agent", () => {
     ]);
     const deps = mkDeps(model.open, {
       term: {
-        write: async (_v: string, p: string) => ok({ path: `/workspace/${p}`, created: true, adds: 1, removes: 0 }),
+        write: async (_v: string, p: string) => ok({ path: `/workspace/${p}`, created: true, adds: 1, removes: 0, before: "" }),
         exec: async () => ok({ exit: 0, out: "index.html\n", ms: 12 }),
         serve: async () => ok({ exit: 0, out: "listening on :4321", ms: 800 }),
       },

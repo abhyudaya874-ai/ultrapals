@@ -1,4 +1,7 @@
+import { workPath } from "@/lib/integrations/kterm";
+import { PREVIEW_CHARS } from "./artifacts";
 import { ensureVm, type SubCtx } from "./ctx";
+import { diffLines, readRows } from "./diff";
 import type { CEvent } from "./events";
 import { callModel } from "./model";
 import { REPEAT_NOTE, repeatState } from "./repeat";
@@ -73,14 +76,19 @@ export async function* runTerminalAgent(ctx: SubCtx, task: string): AsyncGenerat
         if (!r.ok) error = r.reason;
         else {
           result = `${r.data.created ? "created" : "updated"} ${r.data.path} (+${r.data.adds} -${r.data.removes})`;
-          yield { kind: "file", agent, id, path: r.data.path, created: r.data.created, adds: r.data.adds, removes: r.data.removes, preview: a.content.slice(0, 4000) };
+          const d = diffLines(r.data.before, a.content);
+          yield { kind: "file", agent, id, path: r.data.path, created: r.data.created, adds: r.data.adds, removes: r.data.removes, preview: a.content.slice(0, PREVIEW_CHARS), patch: d.lines, cut: d.cut, mode: "write" };
         }
         break;
       }
       case "read": {
         const r = await deps.term.read(vm.id, a.path);
         if (!r.ok) error = r.reason;
-        else result = tail(r.data, 1500);
+        else {
+          result = tail(r.data, 1500);
+          const v = readRows(r.data);
+          yield { kind: "file", agent, id: `${id}-read`, path: workPath(a.path) ?? a.path, created: false, adds: 0, removes: 0, preview: r.data.slice(0, PREVIEW_CHARS), patch: v.lines, cut: v.cut, mode: "read" };
+        }
         break;
       }
     }

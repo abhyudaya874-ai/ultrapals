@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { AgentProvider } from "@/components/agent/AgentProvider";
 import { SelectionPopover } from "@/components/agent/SelectionPopover";
-import { Workspace } from "@/components/agent/Workspace";
+import { ArtifactPanel } from "@/components/agent/ArtifactPanel";
 import { Sidebar } from "./Sidebar";
 
 const ShellCtx = createContext<{ openSidebar: () => void }>({ openSidebar: () => {} });
@@ -13,6 +13,7 @@ export const useShell = () => useContext(ShellCtx);
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const path = usePathname();
+  const home = path === "/";
   useEffect(() => {
     setDrawer(false);
   }, [path]);
@@ -24,8 +25,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside data-testid="shell-sidebar" className={`fixed inset-y-0 left-0 z-50 w-[272px] border-r border-line bg-sidebar transition-transform duration-200 lg:static lg:translate-x-0 ${drawer ? "translate-x-0" : "-translate-x-full"}`}>
           <Suspense fallback={null}><Sidebar /></Suspense>
         </aside>
-        <div className="relative min-h-0 min-w-0 flex-1" data-testid="shell-main">{children}<Workspace /></div>
-        <AgentPanel />
+        <div className="relative min-h-0 min-w-0 flex-1" data-testid="shell-main">{children}{!home && <ArtifactPanel docked={false} />}</div>
+        {home ? <ArtifactPanel docked /> : <AgentPanel />}
       </div>
       <SelectionPopover />
       </AgentProvider>

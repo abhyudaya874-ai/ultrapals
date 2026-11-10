@@ -2,7 +2,7 @@
 import { formatDuration } from "@/components/thread/format";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { Pill } from "@/components/ui/Pill";
-import { IconAgent, IconMail, IconDollar, IconFile, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
+import { IconAgent, IconMail, IconDollar, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
 import type { AgentRole } from "@/lib/computer/events";
 import { palName } from "@/lib/computer/pals";
 import { disclosureRows, processLabel } from "@/lib/computer/process";
@@ -14,6 +14,7 @@ import { SearchedSites } from "./SearchedSites";
 import { SourceStack } from "@/components/ui/SiteChip";
 import { groupVisits } from "@/lib/computer/visits";
 import { useAgent } from "./AgentProvider";
+import { FileChanges } from "./FileChanges";
 
 const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
 const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar, rival: IconList, superpal: IconList, situation: IconList, sandbox: IconTerminal };
@@ -31,8 +32,6 @@ export function RunView({ run }: { run: Run }) {
   const running = run.status === "running";
   const subs = subagents(run);
   const files = subs.flatMap((a) => a.files);
-  const adds = files.reduce((n, f) => n + f.adds, 0);
-  const removes = files.reduce((n, f) => n + f.removes, 0);
   const terms = subs.flatMap((a) => a.terms).length;
   const main = run.agents.find((a) => a.id === "main");
   const rows = disclosureRows(run);
@@ -44,6 +43,15 @@ export function RunView({ run }: { run: Run }) {
   return (
     <article className="space-y-4" data-testid="run">
       <div className="rounded-card bg-surface p-3.5">
+        {run.images && run.images.length > 0 && (
+          <ul className="mb-2 flex flex-wrap gap-2" data-testid="run-images">
+            {run.images.map((im) => (
+              <li key={im.id} className="size-20 overflow-hidden rounded-xl border border-line bg-canvas">
+                <img src={im.url} alt={im.name} className="size-full object-cover" />
+              </li>
+            ))}
+          </ul>
+        )}
         {run.attachments.map((a) => (
           <blockquote key={a.id} className="mb-2 line-clamp-3 border-l-2 border-line pl-2.5 text-[12.5px] italic text-fg-muted">{a.text}</blockquote>
         ))}
@@ -103,15 +111,7 @@ export function RunView({ run }: { run: Run }) {
         </Disclosure>
       )}
 
-      {files.length > 0 && (
-        <button type="button" data-testid="files-card" onClick={() => openWorkspace("files")} className="flex w-full items-center gap-3 rounded-card bg-surface p-3 text-left hover:bg-surface-2">
-          <span className="grid size-9 place-items-center rounded-lg bg-surface-2"><IconFile className="size-4 text-fg-muted" /></span>
-          <span>
-            <span className="block text-[13.5px] font-medium text-fg">Edited {files.length} file{files.length === 1 ? "" : "s"}</span>
-            <span className="text-[12.5px]"><span className="text-ok">+{adds}</span> <span className="text-bad">-{removes}</span></span>
-          </span>
-        </button>
-      )}
+      <FileChanges files={files} />
 
       {run.exam && <ExamPanel card={run.exam} />}
       {run.situation && <SituationPanel card={run.situation} />}

@@ -52,6 +52,7 @@ export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPat
     superKeys: () => ({}),
     probes: { stripe: never, square: never, paypal: never },
     fetchPage: never,
+    vision: never,
   };
   return { ...base, ...patch, vm: { ...base.vm, ...patch.vm }, term: { ...base.term, ...patch.term }, model: { ...base.model, ...patch.model } } as unknown as Deps;
 }

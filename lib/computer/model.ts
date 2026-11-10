@@ -11,6 +11,8 @@ export interface ModelDeps {
   now: () => number;
   /** callModelHedged races this many models at once (1..3, default 1). Costs extra requests, saves the 40s stall. */
   hedge?: number;
+  /** false = the roster order is used as given on every call (a chosen model stays first); default true rotates by round to spread rate limits. */
+  rotate?: boolean;
 }
 
 /** Fastest first, spread across all five providers so one rate limit never stalls the loop. Verified live 2026-11-10. */
@@ -60,7 +62,7 @@ export async function* callModel(
   o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number; accept?: (text: string) => boolean; streamAnswer?: (accum: string) => string } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   let last = "no model available";
-  for (const m of orderModels(deps.models, o.round ?? 0, deps.now())) {
+  for (const m of orderModels(deps.models, deps.rotate === false ? 0 : (o.round ?? 0), deps.now())) {
     if (o.signal?.aborted) return { ok: false, error: "cancelled" };
     const deadline = AbortSignal.timeout(o.modelTimeoutMs ?? MODEL_TIMEOUT_MS); // a stalled model costs this long, not the adapter's 60s
     const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal ? AbortSignal.any([o.signal, deadline]) : deadline, maxTokens: o.maxTokens ?? 900 });
@@ -128,7 +130,8 @@ export async function* callModelHedged(
   const ping = () => { const w = wake; wake = null; w?.(); };
   const runs = ctrls.map(async (c, i): Promise<ModelResult> => {
     const signal = o.signal ? AbortSignal.any([o.signal, c.signal]) : c.signal;
-    const g = callModel(agent, messages, deps, { ...o, signal, round: (o.round ?? 0) + i });
+    // racers must start on different models: with a fixed order, racer i starts i places down the list
+    const g = callModel(agent, messages, deps.rotate === false ? { ...deps, models: [...deps.models.slice(i), ...deps.models.slice(0, i)] } : deps, { ...o, signal, round: (o.round ?? 0) + i });
     for (;;) {
       const x = await g.next();
       if (x.done) return x.value;
