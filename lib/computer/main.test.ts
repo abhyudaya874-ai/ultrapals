@@ -64,7 +64,7 @@ describe("main agent", () => {
   it("reports a total model failure as an error, not a hang", async () => {
     const open = (async () => ({ ok: false as const, degraded: true as const, reason: "groq http 429" })) as never;
     const { ev } = await collect(runMain(mkSession(), input, mkDeps(open)));
-    expect(ev.at(-1)).toMatchObject({ kind: "error", message: expect.stringContaining("every free model failed") });
+    expect(ev.at(-1)).toMatchObject({ kind: "error", message: expect.stringContaining("every allowlisted model failed") });
   });
   it("includes selected text and the page path in the prompt, and treats them as data", async () => {
     const model = scripted(['{"action":"answer","text":"ok"}']);

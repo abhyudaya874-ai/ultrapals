@@ -11,30 +11,38 @@ export interface ModelDeps {
   now: () => number;
 }
 
-/** Fastest first. Groq's free TPM limit is PER MODEL, so alternating the two gpt-oss sizes roughly doubles an agent's budget. */
+/** Fastest first, spread across all five providers so one rate limit never stalls the loop. Verified live 2026-11-10. */
 export const defaultModelDeps: ModelDeps = {
   open: openChat,
   now: Date.now,
   models: [
     { provider: "groq", model: "openai/gpt-oss-120b" },
     { provider: "groq", model: "openai/gpt-oss-20b" },
+    { provider: "nvidia", model: "deepseek-ai/deepseek-v4.1-flash" },
+    { provider: "tokenrouter", model: "x-ai/grok-4.1-fast" },
+    { provider: "bluesminds", model: "nvidia/nemotron-3.5-lightning-30b-a3b" },
+    { provider: "nvidia", model: "z-ai/glm-5.3-flash" },
+    { provider: "tokenrouter", model: "deepseek/deepseek-v4.1-flash" },
+    { provider: "bluesminds", model: "moonshotai/kimi-k3" },
+    { provider: "nvidia", model: "moonshotai/kimi-k2.6" },
+    { provider: "tokenrouter", model: "openai/gpt-oss-120b" },
+    { provider: "bluesminds", model: "openai/gpt-oss-20b" },
     { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
     { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
     { provider: "openrouter", model: "openrouter/free" },
   ],
 };
 
-const cooldown = new Map<string, number>(); // model -> epoch ms until which a 429/overload told us to leave it alone
+const cooldown = new Map<string, number>(); // "provider:model" -> epoch ms until which a 429/overload told us to leave it alone
 
 export const resetCooldowns = (): void => cooldown.clear();
 
-/** Pure. Rotates the leading Groq pair by `k` (so step N starts on a different model than step N-1) and drops models still cooling down. */
+/** Pure. Round-robins the WHOLE roster by `k` (step N starts on a different model than step N-1, across all
+ *  providers) and drops models still cooling down. Never returns an empty list. */
 export function orderModels(models: ModelRef[], k: number, now: number, cool: ReadonlyMap<string, number> = cooldown): ModelRef[] {
-  const g = models.findIndex((m) => m.provider !== "groq");
-  const head = models.slice(0, g < 0 ? models.length : g);
-  const r = head.length ? k % head.length : 0;
-  const rotated = [...head.slice(r), ...head.slice(0, r), ...models.slice(head.length)];
-  const live = rotated.filter((m) => (cool.get(m.model) ?? 0) <= now);
+  const r = models.length ? k % models.length : 0;
+  const rotated = [...models.slice(r), ...models.slice(0, r)];
+  const live = rotated.filter((m) => (cool.get(`${m.provider}:${m.model}`) ?? 0) <= now);
   return live.length ? live : rotated; // everything cooling: try anyway rather than fail without a request
 }
 
@@ -56,7 +64,7 @@ export async function* callModel(
     const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal, maxTokens: o.maxTokens ?? 900 });
     if (!opened.ok) {
       last = opened.reason;
-      if (/429|503|overload|rate/i.test(opened.reason)) cooldown.set(m.model, deps.now() + 60_000);
+      if (/429|503|overload|rate/i.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 60_000);
       continue;
     }
     let text = "";
@@ -75,11 +83,11 @@ export async function* callModel(
     }
     if (failed && !text) {
       last = failed;
-      cooldown.set(m.model, deps.now() + 30_000);
+      cooldown.set(`${m.provider}:${m.model}`, deps.now() + 30_000);
       continue;
     }
     if (!text.trim()) { last = "empty reply"; continue; }
     return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider };
   }
-  return { ok: false, error: `every free model failed: ${last}` };
+  return { ok: false, error: `every allowlisted model failed: ${last}` };
 }

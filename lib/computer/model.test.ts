@@ -10,14 +10,18 @@ const M: ModelRef[] = [
 beforeEach(resetCooldowns);
 
 describe("orderModels", () => {
-  it("rotates only the Groq pair so successive steps start on different models", () => {
+  it("round-robins the whole roster so successive steps start on different models", () => {
     expect(orderModels(M, 0, 0, new Map()).map((m) => m.model)).toEqual(["g/a", "g/b", "o/c:free", "o/d:free"]);
-    expect(orderModels(M, 1, 0, new Map()).map((m) => m.model)).toEqual(["g/b", "g/a", "o/c:free", "o/d:free"]);
-    expect(orderModels(M, 2, 0, new Map()).map((m) => m.model)[0]).toBe("g/a");
+    expect(orderModels(M, 1, 0, new Map()).map((m) => m.model)).toEqual(["g/b", "o/c:free", "o/d:free", "g/a"]);
+    expect(orderModels(M, 4, 0, new Map()).map((m) => m.model)).toEqual(["g/a", "g/b", "o/c:free", "o/d:free"]);
   });
-  it("skips models still cooling down, but never returns an empty list", () => {
-    expect(orderModels(M, 0, 100, new Map([["g/a", 500]])).map((m) => m.model)).toEqual(["g/b", "o/c:free", "o/d:free"]);
-    expect(orderModels(M, 0, 100, new Map(M.map((m) => [m.model, 500]))).length).toBe(4);
+  it("skips models still cooling down (keyed per provider:model), but never returns an empty list", () => {
+    expect(orderModels(M, 0, 100, new Map([["groq:g/a", 500]])).map((m) => m.model)).toEqual(["g/b", "o/c:free", "o/d:free"]);
+    expect(orderModels(M, 0, 100, new Map(M.map((m) => [`${m.provider}:${m.model}`, 500]))).length).toBe(4);
+  });
+  it("a cooldown on one provider does not cool the same model id elsewhere", () => {
+    const M2: ModelRef[] = [{ provider: "groq", model: "x/y" }, { provider: "tokenrouter", model: "x/y" }];
+    expect(orderModels(M2, 0, 100, new Map([["groq:x/y", 500]])).map((m) => m.provider)).toEqual(["tokenrouter"]);
   });
 });
 
@@ -60,7 +64,7 @@ describe("callModel", () => {
     const open = async (p: "groq", m: string) => (m === "g/a" ? ok(p, m, err) : ok(p, m, sse({ content: "fine" })));
     expect((await drain(callModel("x", [], deps(open)))).ret).toMatchObject({ ok: true, model: "b" });
     resetCooldowns();
-    expect((await drain(callModel("x", [], deps(async () => bad("down"))))).ret).toEqual({ ok: false, error: "every free model failed: down" });
+    expect((await drain(callModel("x", [], deps(async () => bad("down"))))).ret).toEqual({ ok: false, error: "every allowlisted model failed: down" });
   });
   it("stops promptly when aborted", async () => {
     const c = new AbortController();
