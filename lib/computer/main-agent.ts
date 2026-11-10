@@ -7,6 +7,7 @@ import { callModel } from "./model";
 import { PAL_NAMES } from "./pals";
 import { runPromiseAgent } from "./promise-agent";
 import { runResearchAgent } from "./research-agent";
+import { runRivalAgent } from "./rival-agent";
 import { pushHistory, type Session } from "./session";
 import { runTerminalAgent } from "./terminal-agent";
 
@@ -19,8 +20,8 @@ export interface MainInput {
   pageContext: string | null;
 }
 
-const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent } as const;
-const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: PAL_NAMES.research, browser: PAL_NAMES.browser, terminal: PAL_NAMES.terminal, promise: PAL_NAMES.promise };
+const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent, rival: runRivalAgent } as const;
+const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: PAL_NAMES.research, browser: PAL_NAMES.browser, terminal: PAL_NAMES.terminal, promise: PAL_NAMES.promise, rival: PAL_NAMES.rival };
 
 /**
  * The main agent: decides, delegates to subagents one at a time (they message it back), and writes the final answer.

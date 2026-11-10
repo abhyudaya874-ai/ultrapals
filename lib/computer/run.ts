@@ -1,3 +1,4 @@
+import type { ExamCard } from "@/lib/pals/card";
 import type { Source } from "@/lib/research/sources";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
 
@@ -60,6 +61,7 @@ export interface Run {
   ms?: number;
   liveViewUrl?: string;
   page?: { url: string; title: string };
+  exam?: ExamCard;
 }
 
 export const newRun = (id: string, prompt: string, attachments: Attachment[] = []): Run => ({
@@ -102,6 +104,8 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       });
     case "file":
       return onAgent(r, e.agent, (a) => ({ ...a, files: upsert(a.files, { id: e.id, path: e.path, created: e.created, adds: e.adds, removes: e.removes, preview: e.preview }) }));
+    case "ladder":
+      return { ...r, exam: e.card };
     case "sources":
       return { ...r, sources: e.sources };
     case "workspace":

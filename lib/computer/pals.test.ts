@@ -8,6 +8,7 @@ describe("palName", () => {
   });
   it.each([
     ["main", "UltraPal"],
+    ["rival-2", "RivalPal"],
     ["research-1", "ResearchPal"],
     ["browser-12", "BrowserPal"],
     ["terminal-2", "TerminalPal"],

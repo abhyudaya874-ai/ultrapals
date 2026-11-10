@@ -1,15 +1,16 @@
 "use client";
 import { formatDuration } from "@/components/thread/format";
 import { Disclosure } from "@/components/ui/Disclosure";
-import { IconAgent, IconDollar, IconFile, IconGlobe, IconSearch, IconTerminal } from "@/components/ui/icons";
+import { IconAgent, IconDollar, IconFile, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
 import type { AgentRole } from "@/lib/computer/events";
 import { palName } from "@/lib/computer/pals";
 import { subagents, type AgentRow, type Run } from "@/lib/computer/run";
 import { AnswerText } from "./AnswerText";
+import { ExamPanel } from "./ExamPanel";
 import { useAgent } from "./AgentProvider";
 
 const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
-const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar };
+const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar, rival: IconList };
 const CHIP = "inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg";
 
 const nameOf = palName;
@@ -92,6 +93,8 @@ export function RunView({ run }: { run: Run }) {
           </span>
         </button>
       )}
+
+      {run.exam && <ExamPanel card={run.exam} />}
 
       {run.answer && <AnswerText text={run.answer} sources={run.sources} onOpen={() => openWorkspace("sources")} />}
       {running && !run.answer && <div className="h-4 w-36 animate-pulse rounded bg-surface-2" />}

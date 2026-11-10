@@ -9,6 +9,7 @@ export const PAL_NAMES: Record<AgentRole, string> = {
   browser: "BrowserPal",
   terminal: "TerminalPal",
   promise: "PromisePal",
+  rival: "RivalPal",
 };
 
 const isRole = (s: string): s is AgentRole => s in PAL_NAMES;

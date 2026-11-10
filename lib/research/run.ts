@@ -1,4 +1,5 @@
 import { openChat, parseChatSse, type ChatProvider } from "@/lib/integrations/chat";
+import { defaultModelDeps } from "@/lib/computer/model";
 import { exaSearch } from "@/lib/integrations/exa";
 import { tavilySearch } from "@/lib/integrations/tavily";
 import type { AdapterResult, WebSource } from "@/lib/integrations/types";
@@ -20,20 +21,14 @@ export interface Deps {
   models: { provider: ChatProvider; model: string }[];
 }
 
-/** Fastest first: Groq (gpt-oss), then OpenRouter ':free'. Every id is re-checked against the free allowlist in openChat. */
+/** Same roster as the agent loop (lib/computer/model.ts); every id is re-checked against the allowlist in openChat. */
 export const defaultDeps: Deps = {
   searchers: [
     { id: "tavily", label: "Tavily", run: tavilySearch },
     { id: "exa", label: "Exa", run: exaSearch },
   ],
   open: openChat,
-  models: [
-    { provider: "groq", model: "openai/gpt-oss-120b" },
-    { provider: "groq", model: "openai/gpt-oss-20b" },
-    { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
-    { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
-    { provider: "openrouter", model: "openrouter/free" },
-  ],
+  models: defaultModelDeps.models,
 };
 
 export async function* research(question: string, signal?: AbortSignal, deps: Deps = defaultDeps): AsyncGenerator<ResearchEvent> {
