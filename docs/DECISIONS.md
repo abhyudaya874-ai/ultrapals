@@ -213,3 +213,25 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
   needs a PayPal write says why it was not measured. The agent still holds no PayPal write tool.
 - **Not used:** the Coinbase CDP key pasted by the owner. CDP has no sandbox, so it stays out of `.env.local`; X402Pal is still measured from the run log.
 - **The future is an inference.** Fit is today's published support weighted by the idea. Nothing in the card is a forecast and the summary says so.
+
+## 18. D-DESK: SituationPal runs as a Case Desk; no separate Case Desk agent (authorized 2026-11-10)
+
+- **O25 — The Case Desk pipeline lives inside SituationPal** (`lib/pals/recommend.ts`, `lib/computer/situation-agent.ts`): intake from a closed
+  list -> typed evidence -> pure rubric `judgeRecommendation` (APPROVE / HOLD / FLAG, closed reason codes, no REJECT) -> blind check -> hashed receipt
+  a person confirms. Missing or conflicting evidence is HOLD; a failed sandbox defect check or a blind pick outside the contenders is FLAG.
+- **Open-ended rails.** A ScoutPal's models propose rails beyond the nine seeds (Lemon Squeezy, Razorpay ...). A rail enters the comparison only if a
+  fetched page names it and the quote is verbatim (`verifyRails`); the comparison is capped at 14.
+- **"Until the best is met" is an algorithm, not a vibe.** After each round, rails whose best case (upper bound) cannot reach the leader's cited fit
+  are eliminated and no longer searched. Research stops when one rail's cited fit beats every other's best case and the leader's weight is
+  >= 75% cited (`best_found`), or on `complete`, `max_rounds` (4), `search_budget` (40), `no_progress`. The card says which.
+- **Blind check.** The blind reader's family (the second family in the roster) is fixed up front and every other call is kept off it, so it can never
+  be the family that classified the evidence. It sees the typed grid only: no idea text, no rubric, no reasoning. One family reachable = HOLD.
+- **The human marker is local.** "I confirm" is stored in the browser's localStorage under the receipt id; it is not a server record.
+
+## 19. D-PROCTOR: scheduled checks that open a case only on a confirmed change (authorized 2026-11-10)
+
+- **O26 — `lib/proctor/**`** (pure `core.ts`, in-memory `store.ts`, `run.ts`) and `POST/GET /api/proctor`. One job today, `sandbox_canary` (the same Stripe-test,
+  Square-sandbox and PayPal-read-only checks SituationPal runs). Diff-first: an equal structural fingerprint stops with no further work; a change is
+  re-checked at once; only a CONFIRMED change opens a case, subject to a daily case budget and quiet hours. A check that cannot run is `missed`, never "no change".
+- **Zero model calls.** `POST` requires `x-proctor-token` when `PROCTOR_TOKEN` is set and is rate-limited. Set the token before exposing the app.
+- **Known limit:** state is per server process (a restart makes a new baseline, never a false alarm). Durable state needs a schema change to a protected file.

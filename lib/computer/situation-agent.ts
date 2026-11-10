@@ -1,129 +1,192 @@
 import type { ChatMessage } from "@/lib/integrations/chat";
-import { generateId } from "./ids";
+import { familyOf, familyOfBare } from "@/lib/pals/family";
 import { pagesFrom } from "@/lib/pals/generate";
 import type { ProbeRow } from "@/lib/pals/probe";
+import { MIN_KNOWN, blindMessages, contenders, judgeRecommendation, parseBlind, separated, type BlindResult } from "@/lib/pals/recommend";
+import { cardHash, receiptId } from "@/lib/pals/receipt";
 import type { FetchedPage } from "@/lib/pals/rival";
 import {
-  DEFAULT_NEEDS, RAILS, buildSituationCard, classifierMessages, mergeCells, needsMessages, parseCells, parseNeeds, queriesFor, railName, summarizeSituation, unknownCells, verifyCells,
-  type Cell, type Need, type RailId, type StopReason,
+  DEFAULT_NEEDS, RAILS, buildSituationCard, classifierMessages, mergeCellsDetail, needsMessages, parseCells, parseNeeds, parseRails, parseScoutQueries, queriesFor, scoreRails, scoutMessages, scoutPlanMessages, scoutQueries,
+  summarizeSituation, unknownCells, verifyCells, verifyRails, type Cell, type Need, type RailDef, type StopReason,
 } from "@/lib/pals/situation";
 import { mergeStreams } from "@/lib/swarm/tree/merge";
 import { admitSpawn } from "@/lib/swarm/tree/policy";
 import { SPAWNS, jobKey, type Caps, type SpawnRequest, type TreeNode } from "@/lib/swarm/tree/types";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
+import { generateId } from "./ids";
 import { callModelHedged } from "./model";
 
-const MAX_ROUNDS = 3;
-const MAX_SEARCHES = 27;
+const MAX_ROUNDS = 4;
+const MAX_SEARCHES = 40;
 const PARALLEL = 4;
 const SEARCH_MS = 9_000;
-const WINDOW_MS = 240_000;
-const PROBED: readonly RailId[] = ["stripe", "square", "paypal"];
+const WINDOW_MS = 270_000;
+const PROBED = ["stripe", "square", "paypal"] as const;
 
 const ROOT: Caps = { spawn: SPAWNS.root, tools: ["tavily", "exa"], maxCalls: 0, maxMs: WINDOW_MS };
 const PAL: Caps = { spawn: SPAWNS.pal, tools: ["tavily", "exa", "fetch"], maxCalls: 0, maxMs: WINDOW_MS };
 const req = (kind: "pal" | "research" | "observe", task: string, why: string, input: Record<string, unknown>): SpawnRequest => ({ kind, mode: "script", task, why, input, ask: { calls: 0, ms: SEARCH_MS }, expects: kind === "observe" ? "observations" : "sources" });
 
 /**
- * SituationPal: an idea in plain words -> which payment needs it has (closed list) -> every rail gets its own Pal; each Pal's
- * ResearchPals search Tavily and Exa in rounds, a classifier reads the pages, and every claim must quote the page it came from.
- * The rounds chain until each (rail, need) has a cited answer or a budget ends; the card says which. Stripe, Square and PayPal also
- * get real SandboxPal checks (test and sandbox environments only; PayPal read-only). Nothing here decides a verdict or moves money.
+ * SituationPal, run the Case Desk way:
+ *   intake (the idea -> needs from a closed list)  ->  evidence (rails found by a scout, each cited; Pals research them in rounds, losers
+ *   eliminated, until one rail's cited fit beats every other's best case)  ->  rubric (pure: APPROVE / HOLD / FLAG)  ->  blind check (a
+ *   DIFFERENT model family sees only the typed grid)  ->  hashed receipt that a person confirms.
+ * It recommends; it never moves money, never rejects, and holds no PayPal write tool.
  */
 export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenerator<CEvent, string> {
   const { agent, deps, signal, session } = ctx;
   const now = Date.now;
   const t0 = now();
   const searchers = deps.search.filter((s) => s.id === "tavily" || s.id === "exa");
-  const railIds = RAILS.map((r) => r.id) as RailId[];
   let modelRound = 0;
-  const ask = async (messages: ChatMessage[], accept?: (t: string) => boolean): Promise<string | null> => {
-    const g = callModelHedged(agent, messages, deps.model, { signal, round: modelRound++, maxTokens: 2400, accept });
+  // The blind reader's family is fixed up front (the second family in the roster), and every other call is kept off it, so the blind
+  // check can never share a family with the model that classified the evidence. One family only = no blind check (HOLD).
+  const families = [...new Set(deps.model.models.filter((m) => m.model !== "openrouter/free").map((m) => familyOf(m.model)))];
+  const blindFamily = families.length >= 2 ? families[1] : null;
+  const mainModels = { ...deps.model, models: blindFamily ? deps.model.models.filter((m) => familyOf(m.model) !== blindFamily) : deps.model.models };
+  const ask = async (messages: ChatMessage[], accept?: (t: string) => boolean, models = mainModels): Promise<{ text: string; family: string } | null> => {
+    const g = callModelHedged(agent, messages, models, { signal, round: modelRound++, maxTokens: 2400, accept });
     for (;;) {
       const n = await g.next();
-      if (n.done) return n.value.ok ? n.value.text : null;
+      if (n.done) return n.value.ok ? { text: n.value.text, family: familyOfBare(n.value.model, deps.model.models) } : null;
     }
   };
+  const askMain = async (messages: ChatMessage[], accept?: (t: string) => boolean): Promise<string | null> => (await ask(messages, accept))?.text ?? null;
 
-  // 1. what does this idea need?
+  // 1. intake: what does this idea need?
   yield { kind: "step", agent, id: "needs", label: "Working out what the idea needs from a payment rail", state: "running" };
   const tn = now();
-  const reply = await ask(needsMessages(idea), (t) => parseNeeds(t).length > 0);
-  const parsed = reply ? parseNeeds(reply) : [];
+  const parsed = parseNeeds((await askMain(needsMessages(idea), (t) => parseNeeds(t).length > 0)) ?? "");
   const needs: Need[] = parsed.length ? parsed : DEFAULT_NEEDS;
   yield { kind: "step", agent, id: "needs", label: "Worked out what the idea needs from a payment rail", state: parsed.length ? "ok" : "error", detail: parsed.length ? needs.map((n) => `${n.need} ${n.weight}`).join(", ") : "no model could read it; using default needs", ms: now() - tn };
 
-  // 2. one Pal per rail, each admitted by the spawn policy
   const nodes: TreeNode[] = [{ id: agent, parent: null, kind: "root", mode: "script", key: `root:${agent}`, depth: 0, caps: ROOT, callsLeft: 0, deadlineMs: t0 + WINDOW_MS, state: "live" }];
   const add = (n: Pick<TreeNode, "id" | "parent" | "kind" | "key" | "depth" | "caps">): void => void nodes.push({ ...n, mode: "script", callsLeft: 0, deadlineMs: t0 + WINDOW_MS, state: "live" });
-  const palIds = new Map<RailId, string>();
-  for (const rail of railIds) {
-    const id = `superpal-${rail}`;
-    const r = req("pal", `${railName(rail)} answers for its rail`, "every rail in the comparison gets its own Pal so its evidence stays separate", { rail });
+  const palIds = new Map<string, string>();
+  const spawnPal = async function* (id: string, title: string, rail: string, task: string, why: string): AsyncGenerator<CEvent, boolean> {
+    const r = req("pal", task, why, { rail });
     const d = admitSpawn({ nodes }, agent, r, now());
-    if (!d.ok) {
-      yield { kind: "spawn", parent: agent, child: id, why: r.why, decision: "denied", detail: d.why };
-      continue;
-    }
-    yield { kind: "spawn", parent: agent, child: id, why: r.why, decision: "admitted" };
+    if (!d.ok) { yield { kind: "spawn", parent: agent, child: id, why, decision: "denied", detail: d.why }; return false; }
+    yield { kind: "spawn", parent: agent, child: id, why, decision: "admitted" };
     add({ id, parent: agent, kind: "pal", key: jobKey(r), depth: 1, caps: PAL });
-    palIds.set(rail, id);
-    yield { kind: "message", id: `to-${id}`, from: agent, to: id, text: `Find what ${railName(rail)} publishes about: ${needs.map((n) => n.need.replace(/_/g, " ")).join(", ")}.` };
-    yield { kind: "agent", id, role: "superpal", title: `${railName(rail)} Pal`, state: "running", parent: agent };
-  }
-  const live = railIds.filter((r) => palIds.has(r));
+    yield { kind: "message", id: `to-${id}`, from: agent, to: id, text: task };
+    yield { kind: "agent", id, role: "superpal", title, state: "running", parent: agent };
+    return true;
+  };
 
-  // 3. sandbox checks run alongside round 1
+  // 2. scout: the models propose rails beyond the seeds; a page must name each one
+  let defs: RailDef[] = [...RAILS];
+  const discovered: { id: string; name: string; url: string; quote: string }[] = [];
+  if (searchers.length > 0) {
+    const scoutId = "superpal-scout";
+    if (yield* spawnPal(scoutId, "ScoutPal", "scout", `Find payment providers beyond ${RAILS.map((r) => r.name).join(", ")} that suit: ${idea.slice(0, 160)}`, "the best rail may not be one of the nine we know; the web names the others")) {
+      const ts = now();
+      const planned = parseScoutQueries((await askMain(scoutPlanMessages(idea), (t) => parseScoutQueries(t).length > 0)) ?? "");
+      const queries = (planned.length ? planned : scoutQueries(idea)).slice(0, 3);
+      const found: { id: "tavily" | "exa"; data: import("@/lib/integrations/types").WebSource[] }[] = [];
+      const scoutTask = (q: string, n: number) => async function* (): AsyncGenerator<CEvent, void> {
+        const id = `research-scout-${n}`;
+        const r = req("research", q, "look for providers the comparison does not have yet", { q });
+        const d = admitSpawn({ nodes }, scoutId, r, now());
+        if (!d.ok || d.reuse) return;
+        add({ id, parent: scoutId, kind: "research", key: jobKey(r), depth: 2, caps: { spawn: [], tools: ["tavily", "exa"], maxCalls: 0, maxMs: WINDOW_MS } });
+        yield { kind: "agent", id, role: "research", title: "ResearchPal", state: "running", parent: scoutId };
+        const s = searchers[n % searchers.length];
+        const tq = now();
+        yield { kind: "step", agent: id, id: "search", label: `Searching ${s.label}: ${q.slice(0, 70)}`, state: "running" };
+        try {
+          const res = await s.run(q, signal ? AbortSignal.any([signal, AbortSignal.timeout(SEARCH_MS)]) : AbortSignal.timeout(SEARCH_MS));
+          if (res.ok) found.push({ id: s.id as "tavily" | "exa", data: res.data });
+          yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: res.ok ? "ok" : "error", detail: res.ok ? `${res.data.length} pages` : res.reason, ms: now() - tq };
+        } catch (e) {
+          yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "error", detail: e instanceof Error ? e.message : "failed", ms: now() - tq };
+        }
+        yield { kind: "agent", id, role: "research", title: "ResearchPal", state: "ok", ms: now() - tq, parent: scoutId };
+      };
+      yield* mergeStreams(queries.map(scoutTask), PARALLEL);
+      const pages = pagesFrom(found, now());
+      let names = "";
+      if (pages.length > 0) {
+        const out = await askMain(scoutMessages(idea, pages, defs), (t) => parseRails(t).length > 0);
+        const v = verifyRails(out ? parseRails(out) : [], pages, defs);
+        for (const d of v.kept) { defs = [...defs, d]; discovered.push({ id: d.id, name: d.name, url: d.found!.url, quote: d.found!.quote }); }
+        names = v.kept.map((d) => d.name).join(", ");
+      }
+      yield { kind: "agent", id: scoutId, role: "superpal", title: "ScoutPal", state: "ok", ms: now() - ts, parent: agent };
+      yield { kind: "message", id: `from-${scoutId}`, from: scoutId, to: agent, text: names ? `Found ${discovered.length} more: ${discovered.map((d) => `${d.name} (${d.url})`).join("; ")}` : "No page named a provider beyond the nine we already compare." };
+    }
+  }
+
+  // 3. one Pal per rail, each admitted by the spawn policy
+  for (const d of defs) {
+    const id = `superpal-${d.id}`;
+    if (yield* spawnPal(id, `${d.name} Pal`, d.id, `Find what ${d.name} publishes about: ${needs.map((n) => n.need.replace(/_/g, " ")).join(", ")}.`, "every rail in the comparison gets its own Pal so its evidence stays separate")) palIds.set(d.id, id);
+  }
+  const live = defs.filter((d) => palIds.has(d.id));
+
+  // 4. sandbox checks (Stripe and Square test environments; PayPal read-only), alongside round 1
   const probes: ProbeRow[] = [];
   const runId = generateId();
-  const probeTask = (rail: RailId) => async function* (): AsyncGenerator<CEvent, void> {
+  const probeTask = (rail: (typeof PROBED)[number]) => async function* (): AsyncGenerator<CEvent, void> {
     const pal = palIds.get(rail);
     if (!pal) return;
     const id = `sandbox-${rail}`;
-    const r = req("observe", `${railName(rail)} sandbox checks`, rail === "paypal" ? "read-only: a typed error and the last real promise run" : "real calls against their test environment with a test token", { rail });
+    const label = live.find((d) => d.id === rail)?.name ?? rail;
+    const r = req("observe", `${label} sandbox checks`, rail === "paypal" ? "read-only: a typed error and the last real promise run" : "real calls against their test environment with a test token", { rail });
     const d = admitSpawn({ nodes }, pal, r, now());
     if (!d.ok) { yield { kind: "spawn", parent: pal, child: id, why: r.why, decision: "denied", detail: d.why }; return; }
     yield { kind: "spawn", parent: pal, child: id, why: r.why, decision: "admitted" };
     add({ id, parent: pal, kind: "observe", key: jobKey(r), depth: 2, caps: { spawn: [], tools: [], maxCalls: 0, maxMs: WINDOW_MS } });
     const ts = now();
     yield { kind: "agent", id, role: "sandbox", title: "SandboxPal", state: "running", parent: pal };
-    yield { kind: "step", agent: id, id: "probe", label: `Running ${railName(rail)} sandbox checks`, state: "running" };
+    yield { kind: "step", agent: id, id: "probe", label: `Running ${label} sandbox checks`, state: "running" };
     const res = rail === "stripe" ? await deps.probes.stripe(runId, signal) : rail === "square" ? await deps.probes.square(runId, signal) : await deps.probes.paypal(session.lastPromiseRun ?? null, signal);
     if (res.ok) {
       probes.push(...res.data);
-      const pass = res.data.filter((x) => x.outcome === "pass").length;
-      yield { kind: "step", agent: id, id: "probe", label: `Ran ${railName(rail)} sandbox checks`, state: "ok", detail: `${pass}/${res.data.length} pass`, ms: now() - ts };
+      yield { kind: "step", agent: id, id: "probe", label: `Ran ${label} sandbox checks`, state: "ok", detail: `${res.data.filter((x) => x.outcome === "pass").length}/${res.data.length} pass`, ms: now() - ts };
     } else {
-      yield { kind: "step", agent: id, id: "probe", label: `Ran ${railName(rail)} sandbox checks`, state: "error", detail: res.reason, ms: now() - ts };
+      yield { kind: "step", agent: id, id: "probe", label: `Ran ${label} sandbox checks`, state: "error", detail: res.reason, ms: now() - ts };
     }
     yield { kind: "agent", id, role: "sandbox", title: "SandboxPal", state: res.ok ? "ok" : "error", ms: now() - ts, parent: pal };
   };
 
-  // 4. research rounds, chained until every needed cell has a cited answer or a budget ends
-  const pagesByRail = new Map<RailId, FetchedPage[]>();
+  // 5. research in rounds until the best is met: contenders only, losers eliminated
+  const pagesByRail = new Map<string, FetchedPage[]>();
   let cells: Cell[] = [];
+  let conflicts = 0;
   let searches = 0;
   let rounds = 0;
   let stop: StopReason = searchers.length ? "max_rounds" : "no_search";
-  const tick = (rail: RailId, round: number, i: number) => `research-${rail}-${round}-${i}`;
+  const eliminated = new Set<string>();
 
   for (let round = 1; searchers.length > 0; round++) {
-    const unknown = unknownCells(live, needs, cells);
+    const scores = scoreRails(live, needs, cells);
+    if (round > 1) {
+      const cont = new Set(contenders({ rails: scores }));
+      for (const s of scores) if (!cont.has(s.rail) && !eliminated.has(s.rail)) {
+        eliminated.add(s.rail);
+        yield { kind: "message", id: `from-superpal-${s.rail}-out`, from: palIds.get(s.rail)!, to: agent, text: `${s.name} is out: its best case (${Math.round(s.upper * 100)}%) cannot beat the leader's cited ${Math.round(scores[0].fit * 100)}%.` };
+      }
+      if (separated({ rails: scores }) && scores[0].known >= MIN_KNOWN) { stop = "best_found"; break; }
+    }
+    const field = live.filter((d) => !eliminated.has(d.id));
+    const unknown = unknownCells(field.map((d) => d.id), needs, cells);
     if (unknown.length === 0) { stop = "complete"; break; }
     if (round > MAX_ROUNDS) { stop = "max_rounds"; break; }
     if (searches >= MAX_SEARCHES) { stop = "search_budget"; break; }
     rounds = round;
 
-    const jobs = live.flatMap((rail) => queriesFor(rail, unknown.filter((u) => u.rail === rail).map((u) => u.need)).map((q, i) => ({ rail, q, i })));
+    const jobs = field.flatMap((d) => queriesFor(d, unknown.filter((u) => u.rail === d.id).map((u) => u.need)).map((q) => ({ def: d, q })));
     const jobsLeft = jobs.slice(0, MAX_SEARCHES - searches);
-    yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: searching for ${unknown.length} unanswered (rail, need) pairs`, state: "running", detail: `${jobsLeft.length} searches` };
+    yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: ${field.length} rail${field.length === 1 ? "" : "s"} still in the race, ${unknown.length} unanswered pairs`, state: "running", detail: `${jobsLeft.length} searches` };
     const tr = now();
-    const fresh = new Map<RailId, FetchedPage[]>();
+    const fresh = new Map<string, FetchedPage[]>();
 
-    const searchTask = (job: { rail: RailId; q: string; i: number }, n: number) => async function* (): AsyncGenerator<CEvent, void> {
-      const pal = palIds.get(job.rail)!;
-      const id = tick(job.rail, round, job.i);
+    const searchTask = (job: { def: RailDef; q: string }, n: number) => async function* (): AsyncGenerator<CEvent, void> {
+      const pal = palIds.get(job.def.id)!;
+      const id = `research-${job.def.id}-${round}`;
       const r = req("research", job.q, "a cited line beats a guess about what this rail supports", { q: job.q });
       const d = admitSpawn({ nodes }, pal, r, now());
       if (!d.ok) { yield { kind: "spawn", parent: pal, child: id, why: r.why, decision: "denied", detail: d.why }; return; }
@@ -136,11 +199,10 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
       yield { kind: "step", agent: id, id: "search", label: `Searching ${s.label}: ${job.q.slice(0, 70)}`, state: "running" };
       searches++;
       try {
-        const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(SEARCH_MS)]) : AbortSignal.timeout(SEARCH_MS);
-        const res = await s.run(job.q, sig);
+        const res = await s.run(job.q, signal ? AbortSignal.any([signal, AbortSignal.timeout(SEARCH_MS)]) : AbortSignal.timeout(SEARCH_MS));
         if (res.ok) {
           const ps = pagesFrom([{ id: s.id as "tavily" | "exa", data: res.data }], now());
-          fresh.set(job.rail, [...(fresh.get(job.rail) ?? []), ...ps]);
+          fresh.set(job.def.id, [...(fresh.get(job.def.id) ?? []), ...ps]);
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "ok", detail: `${ps.length} pages`, ms: now() - ts };
         } else {
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "error", detail: res.reason, ms: now() - ts };
@@ -151,43 +213,60 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
       yield { kind: "agent", id, role: "research", title: "ResearchPal", state: "ok", ms: now() - ts, parent: pal };
     };
 
-    const tasks = [...(round === 1 ? PROBED.map(probeTask) : []), ...jobsLeft.map((j, n) => searchTask(j, n + round))];
-    yield* mergeStreams(tasks, PARALLEL);
+    yield* mergeStreams([...(round === 1 ? PROBED.map(probeTask) : []), ...jobsLeft.map((j, n) => searchTask(j, n + round))], PARALLEL);
     for (const [rail, ps] of fresh) {
       const have = pagesByRail.get(rail) ?? [];
       const urls = new Set(have.map((p) => p.url));
       pagesByRail.set(rail, [...have, ...ps.filter((p) => !urls.has(p.url))].slice(0, 6));
     }
 
-    // classify this round's new pages; every claim must quote its page
     let added = 0;
     if (fresh.size > 0) {
       const view = new Map([...fresh.keys()].map((r) => [r, pagesByRail.get(r) ?? []] as const));
-      const targets = unknown.filter((u) => view.has(u.rail));
-      const out = await ask(classifierMessages(idea, needs, targets, view), (t) => parseCells(t).length > 0);
-      const v = verifyCells(out ? parseCells(out) : [], pagesByRail, needs.map((n) => n.need));
-      const before = cells.length;
-      cells = mergeCells(cells, v.kept);
-      added = cells.length - before;
-      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: classified the pages`, state: "ok", detail: `${added} cited answers kept, ${v.dropped.length} dropped by cite-or-die`, ms: now() - tr };
+      const out = await askMain(classifierMessages(idea, needs, unknown.filter((u) => view.has(u.rail)), view, live), (t) => parseCells(t).length > 0);
+      const v = verifyCells(out ? parseCells(out) : [], pagesByRail, needs.map((n) => n.need), live);
+      const m = mergeCellsDetail(cells, v.kept);
+      added = m.cells.length - cells.length;
+      cells = m.cells;
+      conflicts += m.conflicts.length;
+      yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: classified the pages`, state: "ok", detail: `${added} cited answers kept, ${v.dropped.length} dropped by cite-or-die${m.conflicts.length ? `, ${m.conflicts.length} conflicting` : ""}`, ms: now() - tr };
     } else {
       yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: nothing came back`, state: "error", detail: "no pages", ms: now() - tr };
     }
     if (added === 0 && round > 1) { stop = "no_progress"; break; }
     if (searches >= MAX_SEARCHES) { stop = "search_budget"; break; }
   }
-
-  // probes still owed when there was no search at all
   if (rounds === 0) for await (const _ of mergeStreams(PROBED.map(probeTask), PARALLEL)) void _;
-  const finalStop = unknownCells(live, needs, cells).length === 0 ? "complete" : stop;
 
-  const card = buildSituationCard({ idea, needs, needsDefaulted: parsed.length === 0, cells, probes, rounds, searches, stop: finalStop, railIds: live });
-  for (const rail of live) {
-    const id = palIds.get(rail)!;
-    const sc = card.rails.find((r) => r.rail === rail)!;
-    const mine = probes.filter((p) => p.rail === rail);
-    yield { kind: "agent", id, role: "superpal", title: `${railName(rail)} Pal`, state: "ok", parent: agent, ms: now() - t0 };
-    yield { kind: "message", id: `from-${id}`, from: id, to: agent, text: `fit ${Math.round(sc.fit * 100)}%–${Math.round(sc.upper * 100)}%, ${sc.parts.filter((p) => p.support !== "unknown").length}/${sc.parts.length} needs cited${mine.length ? `; sandbox ${mine.filter((p) => p.outcome === "pass").length}/${mine.length} checks pass` : ""}.` };
+  const finalScores = scoreRails(live, needs, cells);
+  const best = separated({ rails: finalScores }) && finalScores[0].known >= MIN_KNOWN;
+  const finalStop: StopReason = best ? "best_found" : unknownCells(live.map((d) => d.id), needs, cells).length === 0 ? "complete" : stop;
+  const core = buildSituationCard({ idea, needs, needsDefaulted: parsed.length === 0, cells, probes, rounds, searches, stop: finalStop, railDefs: live, discovered, conflicts });
+
+  // 6. blind check: a DIFFERENT model family sees only the typed grid
+  yield { kind: "step", agent, id: "blind", label: "Blind check by a different model family", state: "running" };
+  const tb = now();
+  let blind: BlindResult | null = null;
+  const others = { ...deps.model, models: deps.model.models.filter((m) => blindFamily !== null && familyOf(m.model) === blindFamily) };
+  if (others.models.length > 0) {
+    const r = await ask(blindMessages(core), (t) => parseBlind(t, core) !== null, others);
+    const b = r ? parseBlind(r.text, core) : null;
+    if (r && b) blind = { family: r.family, pick: b.pick, concern: b.concern };
+  }
+  yield { kind: "step", agent, id: "blind", label: blind ? "Blind check by a different model family" : "Blind check could not run", state: blind ? "ok" : "error", detail: blind ? `a ${blind.family} model picked ${live.find((d) => d.id === blind!.pick)?.name ?? blind.pick}` : "no second model family answered", ms: now() - tb };
+
+  // 7. rubric (pure) and receipt
+  const rubric = judgeRecommendation(core, blind);
+  const sealed = { ...core, rubric, ...(blind ? { blind } : {}) };
+  const card = { ...sealed, receipt: { id: receiptId(sealed), cardHash: cardHash(sealed) } };
+  yield { kind: "step", agent, id: "rubric", label: `Case Desk rubric: ${rubric.outcome}`, state: rubric.outcome === "APPROVE" ? "ok" : "error", detail: rubric.reasons.join(", ") };
+
+  for (const d of live) {
+    const id = palIds.get(d.id)!;
+    const sc = card.rails.find((r) => r.rail === d.id)!;
+    const mine = probes.filter((p) => p.rail === d.id);
+    yield { kind: "agent", id, role: "superpal", title: `${d.name} Pal`, state: "ok", parent: agent, ms: now() - t0 };
+    if (!eliminated.has(d.id)) yield { kind: "message", id: `from-${id}`, from: id, to: agent, text: `fit ${Math.round(sc.fit * 100)}%–${Math.round(sc.upper * 100)}%, ${sc.parts.filter((p) => p.support !== "unknown").length}/${sc.parts.length} needs cited${mine.length ? `; sandbox ${mine.filter((p) => p.outcome === "pass").length}/${mine.length} checks pass` : ""}.` };
   }
   yield { kind: "situation", agent, card };
   return summarizeSituation(card);

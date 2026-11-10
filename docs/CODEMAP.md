@@ -195,3 +195,10 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `lib/integrations/rails.ts`: `probeStripe(runId)`, `probeSquare(runId)`, `probePayPal(run)` (capabilities `stripe`, `square`)
 - `lib/computer/situation-agent.ts`: `runSituationAgent(ctx, idea)`; `components/agent/SituationPanel.tsx`; `components/ui/Pill.tsx`
 - `lib/computer/model.ts`: `callModel`/`callModelHedged` take `accept(text)` so an unusable reply moves on to the next model
+
+## Case Desk inside SituationPal (D-DESK) and Proctor (D-PROCTOR)
+- `lib/pals/recommend.ts`: `judgeRecommendation(card, blind)`, `contenders`, `separated`, `blindMessages`, `parseBlind`, `REASON_TEXT`, `OUTCOMES`, `REASONS`
+- `lib/pals/situation.ts`: `RailDef`, `RAILS` (seeds), `verifyRails`, `parseRails`, `scoutMessages`, `scoutPlanMessages`, `scoutQueries`, `mergeCellsDetail`
+- `lib/pals/family.ts`: `familyOf`, `familyOfBare`, `excludeFamilies`; `lib/pals/receipt.ts`: `cardHash`, `receiptId`, `canon`, `sha256` (server only)
+- `lib/proctor/core.ts`: `dueJobs`, `changed`, `allowEscalation`, `escalationStep`, `diffRows`, `fingerprint`; `run.ts`: `runDue(deps, schedules)`; `store.ts`: `proctorStore`
+- `app/api/proctor/route.ts`; `components/ProctorPanel.tsx` (on /board)

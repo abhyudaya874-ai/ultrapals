@@ -1,5 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
+import { ProctorPanel } from "@/components/ProctorPanel";
 
 // Studio is browser-only; keep it out of the server render.
 const StudioBoard = dynamic(() => import("@/components/studio/StudioBoard").then((m) => m.StudioBoard), {
@@ -10,6 +11,7 @@ const StudioBoard = dynamic(() => import("@/components/studio/StudioBoard").then
 export default function BoardPage() {
   return (
     <main className="h-full overflow-y-auto p-3">
+      <ProctorPanel />
       <StudioBoard />
     </main>
   );

@@ -33,6 +33,7 @@ const Schema = z.object({
   CAP_BLUESMINDS: flag,
   CAP_TAVILY: flag,
   CAP_EXA: flag,
+  PROCTOR_TOKEN: opt(), // when set, POST /api/proctor requires it in x-proctor-token
   CAP_STRIPE: flag,
   CAP_SQUARE: flag,
 
