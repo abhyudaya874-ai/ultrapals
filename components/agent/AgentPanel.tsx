@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStickToBottom } from "@/components/thread/Dock";
 import { IconAgent, IconArrowDown, IconArrowUp, IconPlus, IconStop, IconX } from "@/components/ui/icons";
+import { PAL_NAMES } from "@/lib/computer/pals";
 import { useAgent } from "./AgentProvider";
 import { RunView } from "./RunView";
 
@@ -29,7 +30,7 @@ export function AgentPanel() {
     <aside data-agent-panel data-testid="agent-panel" className="fixed inset-0 z-50 flex flex-col border-l border-line bg-sidebar lg:static lg:z-auto lg:w-[440px] lg:shrink-0">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
         <IconAgent className="size-4 text-fg-muted" />
-        <h2 className="text-[15px] font-medium text-fg">Computer</h2>
+        <h2 className="text-[15px] font-medium text-fg">{PAL_NAMES.main}</h2>
         <span className="text-[12px] text-fg-dim">{busy ? "working…" : "ready"}</span>
         <button type="button" onClick={newChat} aria-label="New chat" title="New chat" className="ml-auto grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"><IconPlus className="size-4" /></button>
         <button type="button" onClick={() => toggle(false)} aria-label="Close chat" title="Close chat (Esc)" className="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"><IconX className="size-4" /></button>

@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { PromiseState } from "@/db/schema";
 import { useAgent } from "@/components/agent/AgentProvider";
+import { APP_NAME, PAL_NAMES } from "@/lib/computer/pals";
 import { IconAgent, IconBoard, IconClock, IconGlobe, IconPlus, IconSearch } from "@/components/ui/icons";
 
 interface Item { id: string; title: string; state: PromiseState; createdAt: string }
@@ -60,7 +61,7 @@ export function Sidebar() {
   return (
     <nav className="flex h-full flex-col" aria-label="Promises">
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="font-serif text-[18px] text-fg">Standing Promise</Link>
+        <Link href="/" className="font-serif text-[18px] text-fg">{APP_NAME}</Link>
         <button type="button" aria-label="Search promises" aria-pressed={find} onClick={() => setFind((f) => !f)} className="rounded-lg p-2 text-fg-muted hover:bg-surface-2 hover:text-fg">
           <IconSearch className="size-[18px]" />
         </button>
@@ -76,7 +77,7 @@ export function Sidebar() {
         ))}
         <li>
           <button type="button" data-testid="open-agent" onClick={() => toggle()} aria-pressed={agentOpen} className={`${row} w-full ${agentOpen ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>
-            <IconAgent className="size-[18px]" />Computer<kbd className="ml-auto font-sans text-[11px] text-fg-dim">Ctrl+L</kbd>
+            <IconAgent className="size-[18px]" />{PAL_NAMES.main}<kbd className="ml-auto font-sans text-[11px] text-fg-dim">Ctrl+L</kbd>
           </button>
         </li>
       </ul>

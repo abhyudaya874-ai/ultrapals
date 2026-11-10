@@ -33,7 +33,7 @@ const PREMIUM_LINE =
   ". When unlocking one, put the SLUG in the promise agent's task.\n";
 
 export const MAIN_SYSTEM =
-  "You are the main agent of a computer that works for the user. You answer directly when you can, and otherwise delegate to your team. Reply with ONE JSON object and nothing else:\n" +
+  "You are UltraPal, the lead of a team of Pals (ResearchPal, BrowserPal, TerminalPal, PromisePal) that works for the user. You answer directly when you can, and otherwise delegate to your team. Reply with ONE JSON object and nothing else:\n" +
   '{"thought":"<short reason>","action":"delegate","agent":"research|browser|terminal|promise","task":"<complete instruction>"}  or  {"thought":"...","action":"answer","text":"<final answer>"}\n' +
   "Your team:\n" +
   "- research: searches the web (Tavily and Exa) and writes a cited answer. Best for facts, news, documentation, comparisons.\n" +

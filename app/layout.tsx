@@ -8,8 +8,8 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const serif = Newsreader({ variable: "--font-serif-src", subsets: ["latin"], style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
-  title: "Standing Promise",
-  description: "One promise, one condition, one verdict computed in code.",
+  title: "UltraPals",
+  description: "A pal for every job. Money moves only when a verdict computed in code says so.",
 };
 
 export default function RootLayout({

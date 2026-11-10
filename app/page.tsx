@@ -11,8 +11,8 @@ export default function Home() {
     <main className="h-full overflow-y-auto">
       <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-center gap-6 px-6 py-10">
         <header>
-          <h1 className="font-serif text-[40px] leading-tight text-fg">Standing Promise</h1>
-          <p className="mt-1 text-[15px] text-fg-muted">One promise, one condition, one verdict computed in code.</p>
+          <h1 className="font-serif text-[40px] leading-tight text-fg">UltraPals</h1>
+          <p className="mt-1 text-[15px] text-fg-muted">A pal for every job. Money moves only when a verdict computed in code says so.</p>
         </header>
         <Composer />
         <nav className="flex flex-wrap items-center gap-4 text-[13px]">

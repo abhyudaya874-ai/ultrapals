@@ -3,6 +3,7 @@ import { formatDuration } from "@/components/thread/format";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { IconAgent, IconDollar, IconFile, IconGlobe, IconSearch, IconTerminal } from "@/components/ui/icons";
 import type { AgentRole } from "@/lib/computer/events";
+import { palName } from "@/lib/computer/pals";
 import { subagents, type AgentRow, type Run } from "@/lib/computer/run";
 import { AnswerText } from "./AnswerText";
 import { useAgent } from "./AgentProvider";
@@ -11,7 +12,7 @@ const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } a
 const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar };
 const CHIP = "inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg";
 
-const nameOf = (id: string) => (id === "main" ? "Computer" : id.replace(/-\d+$/, "").replace(/^./, (c) => c.toUpperCase()));
+const nameOf = palName;
 
 function summary(a: AgentRow): string {
   const last = [...a.steps].reverse().find((s) => s.state !== "running") ?? a.steps.at(-1);

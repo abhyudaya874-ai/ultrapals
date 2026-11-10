@@ -4,6 +4,7 @@ import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
 import { callModel } from "./model";
+import { PAL_NAMES } from "./pals";
 import { runPromiseAgent } from "./promise-agent";
 import { runResearchAgent } from "./research-agent";
 import { pushHistory, type Session } from "./session";
@@ -19,7 +20,7 @@ export interface MainInput {
 }
 
 const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent } as const;
-const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: "Research", browser: "Browser", terminal: "Terminal", promise: "Payments" };
+const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: PAL_NAMES.research, browser: PAL_NAMES.browser, terminal: PAL_NAMES.terminal, promise: PAL_NAMES.promise };
 
 /**
  * The main agent: decides, delegates to subagents one at a time (they message it back), and writes the final answer.
@@ -28,7 +29,7 @@ const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: "Research
 export async function* runMain(session: Session, input: MainInput, deps: Deps, signal?: AbortSignal): AsyncGenerator<CEvent> {
   const t0 = Date.now();
   const results: { agent: string; task: string; result: string }[] = [];
-  yield { kind: "agent", id: "main", role: "main", title: "Computer", state: "running" };
+  yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "running" };
   let invalid = 0;
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
@@ -42,7 +43,7 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     ];
     const res = yield* callModel("main", messages, deps.model, { signal, round, maxTokens: 1400 });
     if (!res.ok) {
-      yield { kind: "agent", id: "main", role: "main", title: "Computer", state: "error", ms: Date.now() - t0 };
+      yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "error", ms: Date.now() - t0 };
       yield { kind: "error", message: res.error };
       return;
     }
@@ -61,7 +62,7 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     if (a.action === "answer") {
       const used = usedSources(a.text, session.sources.length);
       session.history = pushHistory(pushHistory(session.history, { role: "user", content: input.prompt }), { role: "assistant", content: a.text });
-      yield { kind: "agent", id: "main", role: "main", title: "Computer", state: "ok", ms: Date.now() - t0 };
+      yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "ok", ms: Date.now() - t0 };
       yield { kind: "answer", delta: a.text };
       yield { kind: "done", used, model: `${res.model} · ${res.provider}`, ms: Date.now() - t0 };
       return;

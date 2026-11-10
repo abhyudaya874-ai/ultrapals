@@ -131,9 +131,17 @@ Standing Promise unlocks them. Consequences:
 - **O12 — Pointer drag is JavaScript;** motion stays CSS-only up to 200 ms (D-UI O4).
 - **O13 — No new dependency or origin:** hand-built SVG plus pointer events.
 
-## 12. D-CAMPUS: university naming layer (authorized 2026-11-09)
+## 12. D-CAMPUS: university naming layer — SUPERSEDED by D-PALS (2026-11-10)
 
-- **O14 — `lib/campus/**` is a pure display map.** No behaviour change; canonical codes stay in data, events and receipts.
+The owner rejected the university theme. `lib/campus/**` was never built and must not be.
+
+## 12b. D-PALS: the app is UltraPals (authorized 2026-11-10)
+
+- **O19 — Display names only.** The app is **UltraPals**; the lead is UltraPal and the workers are ResearchPal, BrowserPal,
+  TerminalPal, PromisePal (next to PayPal, on purpose). `lib/computer/pals.ts` is the single display map (`PAL_NAMES`, `palName`).
+  Roles, ids, events, reason codes and receipts keep their canonical names; the delegate JSON still says `research|browser|terminal|promise`.
+- "Standing Promise" stays as the name of the money mechanism (create -> approve -> settle), not of the app.
+- New agents follow the same rule: a `<Thing>Pal` display name, a canonical role in data.
 
 ## 13. D-RIVAL: exchange programme (authorized 2026-11-09)
 
