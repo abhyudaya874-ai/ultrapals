@@ -123,7 +123,10 @@ export async function* generateRivals(contract: string, deps: GenDeps, signal?: 
   let errors: string[] = [];
   for (let round = 0; round < 2 && (round === 0 || (accepted.length < 2 && errors.length > 0)); round++) {
     const reply = await deps.ask(rivalMessages(contract, out.pages, errors), signal);
-    if (reply === null) break;
+    if (reply === null) {
+      if (round === 0) out.error = "every model failed; no rivals proposed";
+      break;
+    }
     errors = [];
     for (const candidate of parseRivals(reply)) {
       const c = verifyRival(candidate, out.pages, deps.now());
@@ -137,5 +140,5 @@ export async function* generateRivals(contract: string, deps: GenDeps, signal?: 
   const kept = new Set(dedupeRivals(accepted.map((e) => e.rival)));
   out.entries = accepted.filter((e) => kept.has(e.rival));
   yield { id: "rivals", label: "Spawned rivals and checked every quote", state: out.entries.length ? "ok" : "error", detail: `${out.entries.length} kept, ${out.rejected.length} rejected`, ms: Date.now() - tr };
-  return out.entries.length ? out : { ...out, error: "no rival survived cite-or-die" };
+  return out.entries.length ? out : { ...out, error: out.error ?? "no rival survived cite-or-die" };
 }

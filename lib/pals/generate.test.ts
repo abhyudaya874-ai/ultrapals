@@ -102,7 +102,7 @@ describe("generateRivals", () => {
   it("survives every model failing (fallback queries, then no rivals)", async () => {
     const { out } = await drain(generateRivals("deal", mk([null])));
     expect(out.queries).toEqual(fallbackQueries("deal"));
-    expect(out.error).toBe("no rival survived cite-or-die");
+    expect(out.error).toBe("every model failed; no rivals proposed");
   });
   it("a one-domain rival is low confidence", async () => {
     const one = rivalJson("re-listed the item under a new id", { sources: [{ url: A.url, operator: "tavily", fetchedAtMs: NOW, quote: "re-listed the item under a new id" }] });
