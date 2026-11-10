@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { getEnv } from "@/lib/env";
+import { getEnv, type Env } from "@/lib/env";
 import { degrade, guard, isOn, type CapabilityId } from "./registry";
 import type { AdapterResult } from "./types";
 
-export type ChatProvider = Extract<CapabilityId, "groq" | "openrouter">;
+export type ChatProvider = Extract<CapabilityId, "groq" | "openrouter" | "nvidia" | "tokenrouter" | "bluesminds">;
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -17,12 +17,25 @@ export interface ChatDelta {
 const BASE: Record<ChatProvider, string> = {
   groq: "https://api.groq.com/openai/v1", // OpenAI-compatible chat completions (console.groq.com/docs)
   openrouter: "https://openrouter.ai/api/v1",
+  nvidia: "https://integrate.api.nvidia.com/v1", // NIM LLM APIs (docs.api.nvidia.com/nim/reference/llm-apis)
+  tokenrouter: "https://api.tokenrouter.com/v1", // OpenAI-compatible gateway (tokenrouter.com; key probed live 2026-11-10)
+  bluesminds: "https://api.bluesminds.com/v1", // OpenAI-compatible gateway (api.bluesminds.com/about)
+};
+
+const KEY_OF: Record<ChatProvider, keyof Env> = {
+  groq: "GROQ_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  nvidia: "NVIDIA_API_KEY",
+  tokenrouter: "TOKENROUTER_API_KEY",
+  bluesminds: "BLUESMINDS_API_KEY",
 };
 
 /**
- * FREE ONLY. The allowlist is the only way a model id reaches the wire.
+ * ALLOWLIST ONLY. The allowlist is the only way a model id reaches the wire.
  * Groq: the free-plan chat models listed on console.groq.com/docs/rate-limits (checked 2026-11-08).
- * OpenRouter: ids ending in ":free", plus the free router. Anything else is refused before any request is made.
+ * OpenRouter: ids ending in ":free", plus the free router.
+ * NVIDIA / TokenRouter / Bluesminds: ids confirmed in each gateway's live /v1/models with the owner's key (2026-11-10).
+ * Anything else is refused before any request is made.
  */
 export const GROQ_FREE_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"] as const;
 export const OPENROUTER_FREE_MODELS = [
@@ -31,11 +44,23 @@ export const OPENROUTER_FREE_MODELS = [
   "nvidia/nemotron-3.5-super-vl:free",
   "openrouter/free",
 ] as const;
+export const NVIDIA_MODELS = ["deepseek-ai/deepseek-v4.1-flash", "z-ai/glm-5.3-flash", "moonshotai/kimi-k2.6"] as const;
+export const TOKENROUTER_MODELS = ["x-ai/grok-4.1-fast", "deepseek/deepseek-v4.1-flash", "openai/gpt-oss-120b"] as const;
+export const BLUESMINDS_MODELS = ["nvidia/nemotron-3.5-lightning-30b-a3b", "moonshotai/kimi-k3", "openai/gpt-oss-20b"] as const;
 
-export function isFreeModel(provider: ChatProvider, model: string): boolean {
-  return provider === "groq"
-    ? (GROQ_FREE_MODELS as readonly string[]).includes(model)
-    : (OPENROUTER_FREE_MODELS as readonly string[]).includes(model) && (model.endsWith(":free") || model === "openrouter/free");
+export function isAllowedModel(provider: ChatProvider, model: string): boolean {
+  switch (provider) {
+    case "groq":
+      return (GROQ_FREE_MODELS as readonly string[]).includes(model);
+    case "openrouter":
+      return (OPENROUTER_FREE_MODELS as readonly string[]).includes(model) && (model.endsWith(":free") || model === "openrouter/free");
+    case "nvidia":
+      return (NVIDIA_MODELS as readonly string[]).includes(model);
+    case "tokenrouter":
+      return (TOKENROUTER_MODELS as readonly string[]).includes(model);
+    case "bluesminds":
+      return (BLUESMINDS_MODELS as readonly string[]).includes(model);
+  }
 }
 
 const Chunk = z.object({
@@ -83,10 +108,10 @@ export async function openChat(
   opts: { signal?: AbortSignal; maxTokens?: number } = {},
 ): Promise<AdapterResult<{ provider: ChatProvider; model: string; body: ReadableStream<Uint8Array> }>> {
   if (!isOn(provider)) return degrade(`${provider} off`);
-  if (!isFreeModel(provider, model)) return degrade(`${provider}: ${model} is not on the free allowlist`);
+  if (!isAllowedModel(provider, model)) return degrade(`${provider}: ${model} is not on the allowlist`);
   return guard(provider, async () => {
     const env = getEnv();
-    const key = provider === "groq" ? env.GROQ_API_KEY : env.OPENROUTER_API_KEY;
+    const key = env[KEY_OF[provider]];
     const signals = [AbortSignal.timeout(60_000), ...(opts.signal ? [opts.signal] : [])];
     const res = await fetch(`${BASE[provider]}/chat/completions`, {
       method: "POST",

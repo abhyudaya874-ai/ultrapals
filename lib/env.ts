@@ -28,6 +28,9 @@ const Schema = z.object({
   CAP_RENDER: flag,
   CAP_GROQ: flag,
   CAP_OPENROUTER: flag,
+  CAP_NVIDIA: flag,
+  CAP_TOKENROUTER: flag,
+  CAP_BLUESMINDS: flag,
   CAP_TAVILY: flag,
   CAP_EXA: flag,
 
@@ -46,6 +49,9 @@ const Schema = z.object({
   STUDIO_LLM_API_KEY: opt(),
   GROQ_API_KEY: opt(),
   OPENROUTER_API_KEY: opt(),
+  NVIDIA_API_KEY: opt(),
+  TOKENROUTER_API_KEY: opt(),
+  BLUESMINDS_API_KEY: opt(),
   TAVILY_API_KEY: opt(),
   EXA_API_KEY: opt(),
   PAYPAL_SANDBOX_BUYER_EMAIL: opt(), // scripted approval on the live browser; never sent to a model
