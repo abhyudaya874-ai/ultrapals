@@ -6,7 +6,9 @@ import { scoreSuperPals } from "@/lib/pals/superpals";
 import { generateRivals, type GenDeps } from "@/lib/pals/generate";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
-import { callModel } from "./model";
+import { callModelHedged } from "./model";
+
+const GEN_CACHE: NonNullable<GenDeps["cache"]> = new Map(); // same deal within 10 min: no second plan call, no second search
 
 /**
  * RivalPal: researches how THIS deal fails (Tavily + Exa), spawns cited rivals, attacks the real judge with their hostile worlds,
@@ -16,7 +18,7 @@ export async function* runRivalAgent(ctx: SubCtx, task: string): AsyncGenerator<
   const { agent, deps, signal } = ctx;
   let round = 0;
   const ask: GenDeps["ask"] = async (messages: ChatMessage[], sig) => {
-    const g = callModel(agent, messages, deps.model, { signal: sig ?? signal, round: round++, maxTokens: 1800 });
+    const g = callModelHedged(agent, messages, deps.model, { signal: sig ?? signal, round: round++, maxTokens: 1800 });
     for (;;) {
       const n = await g.next();
       if (n.done) return n.value.ok ? n.value.text : null;
@@ -25,7 +27,7 @@ export async function* runRivalAgent(ctx: SubCtx, task: string): AsyncGenerator<
   const search: GenDeps["search"] = [];
   for (const s of deps.search) if (s.id === "tavily" || s.id === "exa") search.push({ id: s.id, run: s.run });
 
-  const gen = generateRivals(task, { search, ask, now: Date.now }, signal);
+  const gen = generateRivals(task, { search, ask, now: Date.now, cache: GEN_CACHE }, signal);
   for (;;) {
     const n = await gen.next();
     if (n.done) {

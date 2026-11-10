@@ -9,12 +9,15 @@ export interface ModelDeps {
   open: typeof openChat;
   models: ModelRef[];
   now: () => number;
+  /** callModelHedged races this many models at once (1..3, default 1). Costs extra requests, saves the 40s stall. */
+  hedge?: number;
 }
 
 /** Fastest first, spread across all five providers so one rate limit never stalls the loop. Verified live 2026-11-10. */
 export const defaultModelDeps: ModelDeps = {
   open: openChat,
   now: Date.now,
+  hedge: 2,
   models: [
     { provider: "groq", model: "openai/gpt-oss-120b" },
     { provider: "groq", model: "openai/gpt-oss-20b" },
@@ -63,6 +66,7 @@ export async function* callModel(
     const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal ? AbortSignal.any([o.signal, deadline]) : deadline, maxTokens: o.maxTokens ?? 900 });
     if (!opened.ok) {
       last = opened.reason;
+      if (o.signal?.aborted) return { ok: false, error: "cancelled" }; // our own abort is not the provider's fault
       if (/http (402|403|404|410)\b/.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 600_000);
       else if (/429|503|overload|rate|timeout/i.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 60_000);
       continue;
@@ -82,6 +86,7 @@ export async function* callModel(
       failed = e instanceof Error ? e.message : "stream failed";
     }
     if (failed && !text) {
+      if (o.signal?.aborted) return { ok: false, error: "cancelled" };
       last = failed;
       cooldown.set(`${m.provider}:${m.model}`, deps.now() + 30_000);
       continue;
@@ -90,4 +95,46 @@ export async function* callModel(
     return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider };
   }
   return { ok: false, error: `every allowlisted model failed: ${last}` };
+}
+
+/**
+ * Races `deps.hedge` models on the same prompt (each starts on a different round of the rotation) and returns the first good
+ * reply; the losers are aborted. A stalled model then costs nothing instead of MODEL_TIMEOUT_MS. With hedge 1 it is callModel.
+ * Reasoning events are dropped when racing (they cannot be attributed to the winner before it wins).
+ */
+export async function* callModelHedged(
+  agent: string,
+  messages: ChatMessage[],
+  deps: ModelDeps,
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; modelTimeoutMs?: number } = {},
+): AsyncGenerator<CEvent, ModelResult> {
+  const n = Math.max(1, Math.min(Math.floor(deps.hedge ?? 1), 3));
+  if (n === 1) return yield* callModel(agent, messages, deps, o);
+  const ctrls = Array.from({ length: n }, () => new AbortController());
+  const runs = ctrls.map(async (c, i): Promise<ModelResult> => {
+    const signal = o.signal ? AbortSignal.any([o.signal, c.signal]) : c.signal;
+    const g = callModel(agent, messages, deps, { ...o, signal, round: (o.round ?? 0) + i });
+    for (;;) {
+      const x = await g.next();
+      if (x.done) return x.value;
+    }
+  });
+  return new Promise<ModelResult>((resolve) => {
+    let pending = n;
+    let err = "no model available";
+    runs.forEach((p, i) =>
+      p.then(
+        (r) => {
+          if (r.ok) {
+            ctrls.forEach((c, j) => { if (j !== i) c.abort(); });
+            resolve(r);
+          } else {
+            if (r.error !== "cancelled" || err === "no model available") err = r.error;
+            if (--pending === 0) resolve({ ok: false, error: err });
+          }
+        },
+        (e) => { if (--pending === 0) resolve({ ok: false, error: e instanceof Error ? e.message : "hedge failed" }); },
+      ),
+    );
+  });
 }

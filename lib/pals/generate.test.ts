@@ -110,3 +110,34 @@ describe("generateRivals", () => {
     expect(out.entries[0].confidence).toBe("low");
   });
 });
+
+describe("generateRivals speed", () => {
+  const good = rivalJson("re-listed the item under a new id");
+  it("starts the default searches while the model is still planning", async () => {
+    const order: string[] = [];
+    const d = mk(['{"queries":["logo designer scam stories"]}', good]);
+    const ask = d.ask;
+    d.ask = async (m, s) => { order.push("ask"); return ask(m, s); };
+    d.search = d.search.map((s) => ({ ...s, run: async (q, sig) => { order.push("search"); return s.run(q, sig); } }));
+    await drain(generateRivals("pay a designer for a logo", d));
+    expect(order.slice(0, 2)).toEqual(["search", "search"]); // fallback searches fired before the plan answered
+  });
+  it("a repeated deal reuses queries and pages: no plan call and no search", async () => {
+    const cache = new Map();
+    const first = mk(['{"queries":["logo designer scam stories"]}', good]);
+    await drain(generateRivals("same deal", { ...first, cache }));
+    let searched = 0;
+    const second = mk([good]);
+    second.search = second.search.map((s) => ({ ...s, run: async () => { searched++; return { ok: true as const, data: [A] }; } }));
+    const { out, steps } = await drain(generateRivals("same deal", { ...second, cache }));
+    expect(searched).toBe(0);
+    expect(second.asked).toHaveLength(1); // only the rivals call
+    expect(out.entries).toHaveLength(1);
+    expect(steps[0].detail).toContain("reused");
+  });
+  it("a stale cache entry is ignored", async () => {
+    const cache = new Map([["old", { at: 0, queries: ["q"], pages: [] }]]);
+    const { out } = await drain(generateRivals("old", { ...mk(["{}", good]), cache }));
+    expect(out.pages.length).toBeGreaterThan(0);
+  });
+});
