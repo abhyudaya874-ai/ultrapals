@@ -49,7 +49,7 @@ export function Outline(p: OutlineProps) {
   ];
 
   return (
-    <div ref={ref} data-testid="outline" className="absolute right-3 top-14 z-30 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-[14px] border border-line bg-surface shadow-2xl">
+    <div ref={ref} data-testid="outline" className="pop-in-down absolute right-3 top-14 z-30 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-[14px] border border-line bg-surface shadow-2xl">
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {agents.length > 0 && (
           <>

@@ -66,13 +66,13 @@ export function ModelPill({ value, onChange, disabled, allowCustom = true }: { v
   return (
     <div className="relative" ref={box}>
       <button type="button" disabled={disabled} onClick={() => { setOpen((o) => !o); setCustom(false); }} aria-haspopup="dialog" aria-expanded={open} data-testid="model-pill" title="Model and effort"
-        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-2/70 pl-2.5 pr-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50">
+        className="press inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-2/70 pl-2.5 pr-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50">
         <Dots lit={litDots(value)} />
         <span className="max-w-[9rem] truncate">{d.pill}</span>
         <IconChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div role="dialog" aria-label="Model and effort" className="absolute bottom-full right-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-dock-line bg-surface p-3 shadow-2xl" data-testid="model-popover">
+        <div role="dialog" aria-label="Model and effort" className="pop-in absolute bottom-full right-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-dock-line bg-surface p-3 shadow-2xl" data-testid="model-popover">
           {!custom ? (
             <>
               <p className="px-1 pb-3 text-[13.5px] leading-snug text-fg-muted"><span className="font-medium text-fg">{d.title}</span> {d.blurb}</p>

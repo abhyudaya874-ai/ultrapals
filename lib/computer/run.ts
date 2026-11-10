@@ -1,6 +1,8 @@
 import type { ExamCard } from "@/lib/pals/card";
 import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
+import type { Bracket } from "@/lib/arena/bracket";
+import type { ArenaFinal, ContenderInfo, Facts, MatchResult, Mode, Outcome, Score } from "@/lib/arena/types";
 import type { ChartSpec } from "@/lib/charts/spec";
 import type { DiffLine } from "./diff";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
@@ -37,6 +39,36 @@ export interface ChartItem {
   spec: ChartSpec;
   note?: string;
   source?: string;
+}
+export interface ContenderState {
+  info: ContenderInfo;
+  /** Its own run: agents, steps, terminal, files, sources, streamed answer. */
+  run: Run;
+  state: "pending" | "running" | "ok" | "error";
+  outcome?: Outcome | null;
+  facts?: Facts;
+  score?: Score;
+}
+export interface ArenaState {
+  mode: Mode;
+  plan: "auto" | "ai" | "manual";
+  scenario: string;
+  question: string;
+  max: number;
+  adaptive: boolean;
+  phase: "running" | "judging" | "writing" | "done";
+  phaseNote?: string;
+  contenders: ContenderState[];
+  winner?: string;
+  judge?: string | null;
+  judgeWhy?: string;
+  /** Loop: the best total after each round. */
+  history: { round: number; best: number }[];
+  /** Battle: the knockout bracket, the matches decided so far, and everyone's health now. */
+  bracket?: Bracket;
+  matches: MatchResult[];
+  hp: Record<string, number>;
+  final?: ArenaFinal;
 }
 export interface AgentRow {
   id: string;
@@ -88,6 +120,10 @@ export interface Run {
   situation?: SituationCard;
   /** Charts UltraPal drew from workspace tables. */
   charts?: ChartItem[];
+  /** Set when this run was a Battle or a Loop. */
+  arena?: ArenaState;
+  /** Set when the browser agent stopped for the person (a CAPTCHA, a sign-in): what they have to do and where. */
+  handoff?: { reason: string; need: "captcha" | "login" | "verification" | "asked"; url: string; agent: string };
   /** Every search made and page read by any agent, in order. Perplexity-style "sites searched". */
   visits: Visit[];
   spawns: SpawnNote[];
@@ -142,6 +178,26 @@ export function applyCEvent(r: Run, e: CEvent): Run {
     }
     case "chart":
       return { ...r, charts: upsert(r.charts ?? [], { id: e.id, spec: e.spec, note: e.note, source: e.source }) };
+    case "arena":
+      return { ...r, arena: { mode: e.mode, plan: e.plan, scenario: e.scenario, question: e.question, max: e.max, adaptive: e.adaptive, phase: "running", history: [], matches: [], hp: Object.fromEntries(e.contenders.map((c) => [c.id, 100])), ...(e.bracket ? { bracket: e.bracket } : {}), contenders: e.contenders.map((info) => ({ info, run: newRun(info.id, info.scenario ?? e.scenario), state: "pending" as const })) } };
+    case "contender": {
+      if (!r.arena) return r;
+      return { ...r, arena: { ...r.arena, contenders: r.arena.contenders.map((c) => (c.info.id === e.id ? { ...c, run: applyCEvent(c.run, e.e), state: c.state === "pending" ? ("running" as const) : c.state } : c)) } };
+    }
+    case "contender_add":
+      // a new contender, or (a planned loop round) what an existing one has learned about what to beat
+      return r.arena ? { ...r, arena: { ...r.arena, contenders: r.arena.contenders.some((c) => c.info.id === e.info.id) ? r.arena.contenders.map((c) => (c.info.id === e.info.id ? { ...c, info: e.info } : c)) : [...r.arena.contenders, { info: e.info, run: newRun(e.info.id, e.info.scenario ?? r.arena.scenario), state: "running" as const }] } } : r;
+    case "contender_done":
+      return r.arena ? { ...r, arena: { ...r.arena, contenders: r.arena.contenders.map((c) => (c.info.id === e.id ? { ...c, state: e.ok ? ("ok" as const) : ("error" as const), outcome: e.outcome, facts: e.facts } : c)) } } : r;
+    case "arena_phase":
+      // the last note stays when the contest ends: a loop's reason for stopping is part of its result
+      return r.arena ? { ...r, arena: { ...r.arena, phase: e.phase, phaseNote: e.note ?? (e.phase === "done" ? r.arena.phaseNote : undefined) } } : r;
+    case "arena_scores":
+      return r.arena ? { ...r, arena: { ...r.arena, winner: e.winner, judge: e.judge, judgeWhy: e.why, contenders: r.arena.contenders.map((c) => ({ ...c, score: e.scores.find((s) => s.id === c.info.id) ?? c.score })), history: e.round ? [...r.arena.history.filter((h) => h.round !== e.round), { round: e.round, best: e.scores[0]?.total ?? 0 }] : r.arena.history } } : r;
+    case "arena_match":
+      return r.arena ? { ...r, arena: { ...r.arena, matches: [...r.arena.matches.filter((m) => m.id !== e.match.id), e.match], hp: { ...r.arena.hp, ...(e.match.duel && e.match.a && e.match.b && e.match.hpAfter ? { [e.match.a]: e.match.hpAfter.a, [e.match.b]: e.match.hpAfter.b } : {}), ...(e.match.hpNext !== null ? { [e.match.winner]: e.match.hpNext } : {}) } } } : r;
+    case "arena_final":
+      return r.arena ? { ...r, arena: { ...r.arena, final: e.final, winner: e.final.winner } } : r;
     case "ladder":
       return { ...r, exam: e.card };
     case "situation":
@@ -150,6 +206,8 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       return { ...r, sources: e.sources };
     case "workspace":
       return { ...r, liveViewUrl: e.liveViewUrl };
+    case "handoff":
+      return { ...r, handoff: { reason: e.reason, need: e.need, url: e.url, agent: e.agent } };
     case "page": {
       const host = hostOfUrl(e.url);
       const seen = r.visits.some((v) => v.action === "read" && v.url === e.url);

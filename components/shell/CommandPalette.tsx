@@ -77,8 +77,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const grouped = ORDER.map((g) => ({ g, items: results.filter((r) => r.group === g) })).filter((x) => x.items.length);
   let idx = -1;
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-start justify-items-center bg-black/55 px-4 pt-[14vh] backdrop-blur-[2px]" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="palette">
-      <div role="dialog" aria-label="Command palette" className="w-full max-w-[600px] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+    <div className="fade-in fixed inset-0 z-[80] grid place-items-start justify-items-center bg-black/55 px-4 pt-[14vh] backdrop-blur-[2px]" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="palette">
+      <div role="dialog" aria-label="Command palette" className="sheet-in w-full max-w-[600px] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
         <div className="flex items-center gap-3 border-b border-line px-4">
           <IconSearch className="size-[18px] shrink-0 text-fg-dim" />
           <input

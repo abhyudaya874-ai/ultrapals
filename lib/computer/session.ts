@@ -1,3 +1,4 @@
+import type { Handoff } from "@/lib/browse/handoff";
 import type { LiveBrowser } from "@/lib/integrations/kbrowser";
 import type { WebSource } from "@/lib/integrations/types";
 import { segmentCitations } from "@/lib/research/citations";
@@ -14,6 +15,10 @@ export interface Session {
   id: string;
   vm: LiveBrowser | null;
   vmOpening: Promise<LiveBrowser | null> | null;
+  /** When Kernel last confirmed the browser is still there (ms). */
+  vmCheckedAt?: number;
+  /** The browser agent stopped for the person and is waiting for them to say to carry on. */
+  handoff?: Handoff;
   sources: Source[];
   history: HistoryTurn[];
   busy: boolean;
@@ -62,22 +67,23 @@ export function pushHistory(h: HistoryTurn[], turn: HistoryTurn): HistoryTurn[] 
   return [...h, { role: turn.role, content: turn.content.slice(0, 1500) }].slice(-MAX_HISTORY);
 }
 
-const sessions = new Map<string, Session>();
-let reaper: ReturnType<typeof setInterval> | undefined;
+// Kept on globalThis, like the other stores: Next re-creates a module when a route compiles or a file changes (in development) and bundles each route
+// separately, and /api/agent and /api/browser must see the same conversations.
+const g = globalThis as unknown as { __spSessions?: Map<string, Session>; __spReaper?: ReturnType<typeof setInterval> };
+const sessions = (g.__spSessions ??= new Map<string, Session>());
 
+/** The session with this id if it is still alive; never creates one. */
+export const findSession = (id: string): Session | undefined => sessions.get(id);
 export function getSession(id: string | undefined, close: (vmId: string) => Promise<void>): Session {
   const found = id ? sessions.get(id) : undefined;
   const s: Session = found ?? { id: crypto.randomUUID(), vm: null, vmOpening: null, sources: [], history: [], files: {}, browserReads: 0, busy: false, lastUsed: Date.now(), seq: 0 };
   s.lastUsed = Date.now();
   sessions.set(s.id, s);
-  reaper ??= Object.assign(
-    setInterval(() => {
-      for (const x of sessions.values())
-        if (!x.busy && Date.now() - x.lastUsed > IDLE_MS) void endSession(x.id, close);
-    }, 60_000),
-    {},
-  );
-  reaper.unref?.();
+  g.__spReaper ??= setInterval(() => {
+    for (const x of sessions.values())
+      if (!x.busy && Date.now() - x.lastUsed > IDLE_MS) void endSession(x.id, close);
+  }, 60_000);
+  g.__spReaper.unref?.();
   return s;
 }
 

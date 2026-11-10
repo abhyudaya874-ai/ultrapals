@@ -226,3 +226,23 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `components/shell/`: `layout` (resize maths), `Resizable` (hook, handle, rail), `recents` + `SidebarMenus` + `useRecents`, `palette` + `CommandPalette`.
 - `components/agent/`: `pace` (event pacing), `BrowserPip` + `pip-model`, `ChartBlock`, `AppArtifacts` (Newsroom, Dashboard, Timeline, Proctor).
 - `lib/automations/stats.ts` (run grid, kpis, upcoming runs); `lib/pals/situation-charts.ts` (radar, heatmap, fit waterfall for the SituationPanel).
+
+## Battle and Loop (D-ARENA)
+- `lib/arena/` (pure, tested): `types` (`ContenderInfo`, `Outcome`, `Facts`, `Score`, `MatchResult`, `ArenaFinal`), `personas` (`PERSONAS`, `STANCES`, `lineup`), `plan` (`Plan`, `Slot`, `planProblems`, `defaultPlan`, `planMessages`, `planFromDraft`, `readPlan`, `PLAN_LABEL`),
+  `plan-edit` (`updateSlot`, `addSlot`, `removeSlot`, `problemsOf`), `mode` (`parseMode`, `MODE_INFO`, `countHint`), `frame` (prompts, `parseOutcome`, `loopStop`, scenario lenses), `judge` (`detScore`, `judgeMessages`, `scrub`, `parseJudge`, `scoreAll`, `meanScores`, `judgeOrder`),
+  `bracket` (`buildBracket`, `resolve`, `nextMatch`, `standings`), `duel` (`duel`, `recover`, `whyResult`), `replay` (`replay`: frames for the hit animation), `explain` (`whyBullets`, `winnerEdge`, `dimGrid`, `evidenceMatrix`, `calibrationPoints`, `loopCurve`, `unjudgedNote`),
+  `diff` (`roundDiff`, `stability`, `tokens`, `overlap`), `view` (`entriesOf`, `roundViews`, `progressOf`, `placeOf`, `statusText`, `splitFinal`, `evidenceLines`, `pathOf`), `report` (markdown and CSV), `run` (`runArena`, `proposePlan`, `pinsFor`, `factsOf`).
+- Routes: `app/api/agent/route.ts` (body `mode`, `approved`; limits 2 a minute per IP and 2 at once), `app/api/arena/plan/route.ts` (POST draft a plan; writes nothing). Events: `arena`, `contender`, `contender_add`, `contender_done`, `arena_phase`, `arena_scores`, `arena_match`, `arena_final`; `Run.arena` is built by `applyCEvent`.
+- `components/arena/`: `board` (pure grid maths), `PanelBoard`, `ContenderPanel`, `Stage` + `StageBits`, `BattleStage`, `Bracket` (+ `MatchWhy`), `Duel` (the hit playback), `LoopStage` (rail, flight, popover), `Diff` (`RoundBrief`, `DiffView`), `Results` + `LoopResults` + `ResultsParts` + `ArenaCharts`, `PlanDialog`, `ArenaSummary` (thread card).
+- `components/orbs/`: `palette`, `gaze`, `mood`, `budget`, `Eyes`, `Orbs` (`FlatOrb`, `AgentOrb`, `BattleOrb`, `UltraOrb`, all memoized). `components/ui/`: `Menu`, `HoverCard` + `hover-place`, `live-orb`, icons.
+- `components/agent/`: `ModeBar`, `prompt-model`, `pump` (the display queue), `CiteCard` + `excerpt`. `AgentProvider` holds `mode`, `drafts`, `pendingPlan`, `stage`.
+
+
+## Browser window and handoff (D-HANDOFF)
+- `lib/browse/`: `address` (`normalizeAddress`, `SEARCH_URL`), `actions` (`Action`, `BROWSER_KEYS`, `parseAction` incl. optional `note`, `describeAction`), `snapshot` (`BROWSE_SYSTEM`, `buildBrowseMessages`, `changeNote`, `scrollLine`, `textChange`, `memoryText`),
+  `handoff` (`needsHuman`, `noticeFor`, `Handoff`, `freshHandoff`, `parseResume`, `resumeTask`, `handoffMessage`, `pendingNote`, `sameAsk`, `sameSpot`, `HANDOFF_TTL_MS`).
+- `lib/integrations/kbrowser.ts` (Kernel adapter, `kiosk_mode`): `openBrowser`, `snapshotPage`, `gotoUrl`, `clickElement`, `typeInto`, `selectOption`, `scrollPage`, `pressKey`, `findText`, `waitSeconds`, `navigate` (back, forward, reload through CDP history), `browserState`, `vmAlive`, `plainError`.
+- `lib/computer/`: `browser-agent` (the loop: look, auto-wait, `needsHuman`, hedged call with `accept`, notes, handoff, resume guards), `ctx` (`SubCtx.interactive`, `SubCtx.resumed`, `ensureVm` health check), `main-agent` (`firstDelegate`, `waitForPerson`, `NO_FINAL_ANSWER`, `WAITING_FOR_YOU`),
+  `models` (`BROWSING_FIRST`, `browsingDeps`), `model` (`callModel` `accept`; `ModelResult.rejected`), `reader` (walls are blocked, not content).
+- `app/api/browser/route.ts` (5th file: a new route): GET state; POST `goto`, `back`, `forward`, `reload`, `open`. Rate limited (90 state reads, 40 actions, 4 new browsers per 5 minutes per IP).
+- `components/agent/`: `BrowserPip` + `pip-model` (connection state machine), `BrowserBar` (`AddressBar`, `AgentBox`), `browser-client` (calls the route), `HandoffCard` (the thread card). `lib/computer/events.ts` has the `handoff` event.

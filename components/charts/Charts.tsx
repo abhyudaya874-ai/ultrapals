@@ -36,7 +36,7 @@ export function RadarChart({ axes, series, size = 280 }: { axes: string[]; serie
   const rings = [0.25, 0.5, 0.75, 1];
   const ends = radarShape(axes.map(() => 1), c, c, r).axes;
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto w-full max-w-[340px]" role="img" aria-label={`Radar chart of ${series.map((s) => s.name).join(", ")}`}>
+    <svg viewBox={`-34 0 ${size + 68} ${size}`} className="mx-auto w-full max-w-[400px]" role="img" aria-label={`Radar chart of ${series.map((s) => s.name).join(", ")}`}>
       {rings.map((k) => <polygon key={k} points={pointsAttr(radarShape(axes.map(() => k), c, c, r).points)} fill="none" stroke={GRID} strokeWidth={1} />)}
       {ends.map((p, i) => <line key={i} x1={c} y1={c} x2={p.x} y2={p.y} stroke={GRID} strokeWidth={1} />)}
       {series.map((s, si) => {

@@ -27,7 +27,8 @@ export function scripted(replies: (string | { reasoning: string; text: string })
 export const VM: LiveBrowser = { id: "vm-1", liveViewUrl: "https://a.kernel.sh:8443/browser/live/T", offX: 0, offY: 87 };
 export const mkSession = (o: Partial<Session> = {}): Session => ({ id: "s1", vm: VM, vmOpening: null, sources: [], history: [], files: {}, browserReads: 0, busy: false, lastUsed: 0, seq: 0, ...o });
 
-export const page = (url: string, title: string, text = "text", elements: Snapshot["elements"] = []): Snapshot => ({ url, title, text, elements });
+/** A normal page: enough text that the browser agent does not take it for a page that has drawn nothing yet. */
+export const page = (url: string, title: string, text = "The page has loaded and shows a few sentences of ordinary text for the model to read.", elements: Snapshot["elements"] = []): Snapshot => ({ url, title, text, elements });
 export const ok = <T>(data: T) => ({ ok: true as const, data });
 
 export async function collect<R>(g: AsyncGenerator<CEvent, R>): Promise<{ ev: CEvent[]; ret: R }> {
@@ -45,7 +46,7 @@ export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPat
   const base = {
     appUrl: () => "https://app.test",
     model: { open, now: () => 1000, models: [{ provider: "groq" as const, model: "openai/gpt-oss-120b" }] },
-    vm: { open: async () => ok(VM), snapshot: never, goto: never, click: never, type: never, scroll: never },
+    vm: { open: async () => ok(VM), snapshot: never, goto: never, click: never, type: never, scroll: never, navigate: never, key: never, wait: never, find: never, select: never, state: never, alive: async () => true },
     term: { exec: never, write: never, read: never, serve: never },
     search: [],
     research: async function* () { /* nothing */ },

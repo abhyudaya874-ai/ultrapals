@@ -1,4 +1,4 @@
-import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
+import { browserState, clickElement, findText, gotoUrl, navigate, openBrowser, pressKey, scrollPage, selectOption, snapshotPage, typeInto, vmAlive, waitSeconds } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
 import { fetchPageText } from "@/lib/integrations/webpage";
 import { toPublic } from "@/lib/automations/public";
@@ -22,6 +22,7 @@ import { createPromise, findPromises, promiseInfo, settlePromise } from "./promi
 import type { CEvent } from "./events";
 import { defaultModelDeps, type ModelDeps } from "./model";
 import { getEnv, publicBase } from "@/lib/env";
+import type { Handoff } from "@/lib/browse/handoff";
 import type { Session } from "./session";
 
 /** Everything an agent touches the outside world through. Tests pass fakes; production passes defaultDeps. */
@@ -34,6 +35,14 @@ export interface Deps {
     click: typeof clickElement;
     type: typeof typeInto;
     scroll: typeof scrollPage;
+    navigate: typeof navigate;
+    key: typeof pressKey;
+    wait: typeof waitSeconds;
+    find: typeof findText;
+    select: typeof selectOption;
+    state: typeof browserState;
+    /** Whether Kernel still has this browser (it deletes one that has been idle for ten minutes). */
+    alive: typeof vmAlive;
   };
   term: { exec: typeof execInVm; write: typeof writeFileInVm; read: typeof readFileInVm; serve: typeof serveInVm };
   search: { id: string; label: string; run: typeof tavilySearch }[];
@@ -61,7 +70,7 @@ export interface Deps {
 export const defaultDeps: Deps = {
   model: defaultModelDeps,
   appUrl: publicBase,
-  vm: { open: openBrowser, snapshot: snapshotPage, goto: gotoUrl, click: clickElement, type: typeInto, scroll: scrollPage },
+  vm: { open: openBrowser, snapshot: snapshotPage, goto: gotoUrl, click: clickElement, type: typeInto, scroll: scrollPage, navigate, key: pressKey, wait: waitSeconds, find: findText, select: selectOption, state: browserState, alive: vmAlive },
   term: { exec: execInVm, write: writeFileInVm, read: readFileInVm, serve: serveInVm },
   search: [{ id: "tavily", label: "Tavily", run: tavilySearch }, { id: "exa", label: "Exa", run: exaSearch }],
   research,
@@ -104,7 +113,15 @@ export interface SubCtx {
   session: Session;
   deps: Deps;
   signal?: AbortSignal;
+  /** The most steps a browsing agent may take (a task the person types in the browser's own box gets more than one the planner delegates). */
+  maxSteps?: number;
+  /** A person is watching and can act in the live browser. Unattended runs (a contender, an automation) cannot ask for help, so a wall is just reported. */
+  interactive?: boolean;
+  /** Set when this run continues one the person just helped: the pause it continues. It may not ask for that same help again and does not go back to the pages it had already visited. */
+  resumed?: Handoff;
 }
+/** How long a browser that was fine a moment ago is trusted without asking Kernel again. */
+export const VM_RECHECK_MS = 15_000;
 
 /**
  * The VM is opened once per session, on first need (3-20s on KERNEL), and shared by the browser and terminal agents.
@@ -112,12 +129,20 @@ export interface SubCtx {
  */
 export async function* ensureVm(ctx: SubCtx): AsyncGenerator<CEvent, NonNullable<Session["vm"]> | null> {
   const { session, deps, agent } = ctx;
-  if (session.vm) return session.vm;
+  if (session.vm) {
+    // Kernel deletes a browser after ten minutes without use. Its live view then says "Session not found" and every action fails, so ask first.
+    if (Date.now() - (session.vmCheckedAt ?? 0) < VM_RECHECK_MS) return session.vm;
+    const alive = await deps.vm.alive(session.vm);
+    session.vmCheckedAt = Date.now();
+    if (alive) return session.vm;
+    session.vm = null;
+    yield { kind: "step", agent, id: `${agent}-vm-gone`, label: "The cloud computer had closed after sitting idle", state: "ok", detail: "starting a new one" };
+  }
   if (session.vmOpening) return session.vmOpening;
   const id = `${agent}-vm`;
   yield { kind: "step", agent, id, label: "Starting a cloud computer", state: "running" };
   const t0 = Date.now();
-  session.vmOpening = deps.vm.open(ctx.signal).then((r) => (r.ok ? (session.vm = r.data) : null));
+  session.vmOpening = deps.vm.open(ctx.signal).then((r) => { if (r.ok) { session.vm = r.data; session.vmCheckedAt = Date.now(); } return r.ok ? r.data : null; });
   const vm = await session.vmOpening;
   session.vmOpening = null;
   if (!vm) {

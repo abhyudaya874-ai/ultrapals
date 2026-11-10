@@ -4,8 +4,8 @@ import { useDismiss } from "@/components/thread/Dock";
 import { IconCheck, IconChevronRight, IconExternal, IconLink, IconMore, IconPin, IconSort } from "@/components/ui/icons";
 import { GROUPS, SORTS, type GroupBy, type RecentsPrefs, type SortBy } from "./recents";
 
-const PANEL = "absolute z-40 rounded-xl border border-line bg-surface p-1 shadow-2xl";
-const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-fg-muted hover:bg-surface-2 hover:text-fg";
+const PANEL = "pop-in-down absolute z-40 rounded-xl border border-line bg-surface p-1 shadow-2xl";
+const ITEM = "press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-fg-muted hover:bg-surface-2 hover:text-fg";
 
 /** "Group by" and "Sort by" for the promises list, as two rows that each open a short list beside them. */
 export function SortGroupMenu({ prefs, onChange }: { prefs: RecentsPrefs; onChange: (p: Partial<RecentsPrefs>) => void }) {

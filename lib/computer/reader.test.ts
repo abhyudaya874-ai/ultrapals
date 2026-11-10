@@ -54,6 +54,31 @@ describe("readPage", () => {
     for (const u of ["http://localhost:3000/", "http://169.254.169.254/latest", "http://10.1.1.1/", "file:///etc/hosts"]) expect((await collect(readPage(c, u, { allowBrowser: true }))).ret).toBeNull();
     expect(calls).toBe(0);
   });
+  const CHECK = "Just a moment...\nVerify you are human by completing the action below. docs.example.com needs to review the security of your connection before proceeding.";
+  it("a security check that came back as the page is reported as blocked, never read as the site's content", async () => {
+    let opened = 0;
+    const c = ctx({ fetchPage: fetchOk(CHECK.repeat(4)), vm: { goto: async () => (opened++, ok(null)) } });
+    const { ev, ret } = await collect(readPage(c, URL1, { allowBrowser: true }));
+    expect(ret).toBeNull();
+    expect(opened).toBe(0);
+    expect(ev.find((e) => e.kind === "step" && e.state === "error")).toMatchObject({ detail: expect.stringContaining("blocked: docs.example.com is showing a security check") });
+  });
+  it("the browser meeting a CAPTCHA stops there: no terminal retry, no asking the person, and nothing from the wall is returned", async () => {
+    let curled = 0;
+    const WALL = page("https://www.google.com/sorry/index?continue=x", "https://www.google.com/search?q=x", "Our systems have detected unusual traffic from your computer network. This page checks to see if it's really you sending the requests, and not a robot.");
+    const c = ctx({ fetchPage: fetchBad("http 429"), vm: { goto: async () => ok(null), snapshot: async () => ok(WALL) }, term: { exec: async () => (curled++, ok({ exit: 0, out: "<p>x</p>", ms: 1 })) } });
+    const { ev, ret } = await collect(readPage(c, "https://www.google.com/search?q=x", { allowBrowser: true }));
+    expect(ret).toBeNull();
+    expect(curled).toBe(0);
+    expect(ev.some((e) => e.kind === "handoff")).toBe(false);
+    expect(c.session.handoff).toBeUndefined();
+    expect(ev.some((e) => e.kind === "step" && e.state === "error" && /blocked/.test(e.detail ?? ""))).toBe(true);
+  });
+  it("a long article ABOUT CAPTCHAs is still read as a page", async () => {
+    const ARTICLE = "A CAPTCHA is a test used to tell humans and bots apart. ".repeat(80);
+    const { ret } = await collect(readPage(ctx({ fetchPage: fetchOk(ARTICLE) }), URL1));
+    expect(ret).toMatchObject({ via: "fetch" });
+  });
   it("a browser that cannot start still lets the page read fall through without crashing", async () => {
     const c = ctx({ fetchPage: fetchBad("http 403"), vm: { open: async () => ({ ok: false as const, degraded: true as const, reason: "kernel off" }) } }, mkSession({ vm: null }));
     const { ev, ret } = await collect(readPage(c, URL1, { allowBrowser: true }));

@@ -71,6 +71,18 @@ export function modelDepsFor(base: ModelDeps, choice: ModelChoice): ModelDeps {
   return { ...base, models: preferFirst(base.models, info.first), hedge: info.hedge, rotate: false };
 }
 
+/**
+ * Models that answered a browsing step with a valid action fastest when every roster model was timed on the same page (2026-11-10: GPT-OSS 120B
+ * 2.5 s, 20B 0.8 s, Nemotron Ultra 13 s; Muse took 29 s and several Nemotrons spent their whole budget thinking). A browsing step is waited for, so
+ * these go first, unless the person pinned a model or a level fixed the order on purpose.
+ */
+export const BROWSING_FIRST = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "nvidia/nemotron-3-ultra-550b-a55b"] as const;
+
+/** Pure. The roster for a browsing step: fast, reliable models first. A run whose order was fixed on purpose (a pinned model, High, Ultra) keeps it. */
+export function browsingDeps(base: ModelDeps): ModelDeps {
+  return base.rotate === false ? base : { ...base, models: preferFirst(base.models, BROWSING_FIRST), rotate: false };
+}
+
 /** Pure. How many planning rounds UltraPal gets. A pinned model uses the Standard budget. */
 export const roundsFor = (choice: ModelChoice): number => (choice.pin ? LEVEL_INFO.standard.rounds : LEVEL_INFO[choice.level].rounds);
 

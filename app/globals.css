@@ -48,7 +48,41 @@ body {
 .b-sch-event.pending { background-color: #f59e0b; }
 /* D-UI O4: CSS-only motion, 200ms. Rows of the Process list appear one by one as the agents report in. */
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.rise { animation: rise 200ms ease-out both; }
+.rise { animation: rise var(--t) var(--ease) both; }
 /* The prompt box draws its own focus state (the box border); the global ring would box the text area inside it. */
 textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
 .dock-focus:focus-within { border-color: var(--color-accent); }
+
+/* Orbs (components/orbs). All motion is CSS and stops under prefers-reduced-motion (rule above). */
+.orb-gradient { fill: var(--orb-fill); }
+.orb-gradient svg { fill: var(--orb-fill); }
+@keyframes ultra-breathe { 0%, 100% { transform: scale(0.96); opacity: 0.85; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes ultra-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3%); } }
+.ultra-halo { animation: ultra-breathe 3s ease-in-out infinite; }
+.ultra-float { animation: ultra-float 5s ease-in-out infinite; }
+
+/* Motion (D-SNAP). One easing and short durations for everything that opens, closes, grows or is pressed, so the app answers at once. */
+:root { --ease: cubic-bezier(0.2, 0.8, 0.2, 1); --t-fast: 110ms; --t: 160ms; --t-slow: 260ms; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes pop-in-down { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chip-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { from { background-position: -80% 0; } to { background-position: 180% 0; } }
+/* Popovers open from the edge they hang from: .pop-in grows up from its button, .pop-in-down grows down from it. */
+.pop-in { animation: pop-in var(--t) var(--ease) both; transform-origin: bottom center; }
+.pop-in-down { animation: pop-in-down var(--t) var(--ease) both; transform-origin: top center; }
+.sheet-in { animation: sheet-in var(--t-slow) var(--ease) both; }
+.fade-in { animation: fade-in var(--t) ease-out both; }
+.chip-in { animation: chip-in var(--t) var(--ease) both; }
+/* Anything you can press gives a little under the finger at once. */
+.press { transition: transform var(--t-fast) var(--ease), background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), opacity var(--t-fast); }
+.press:active:not(:disabled) { transform: scale(0.95); }
+/* A box that grows to fit what was just put in it (the prompt box when a picture arrives): the content animates its own height. */
+.snap-grow { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--t) var(--ease), opacity var(--t) ease-out; }
+.snap-grow[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
+.snap-grow > * { min-height: 0; overflow: hidden; }
+.shimmer { background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.14) 50%, transparent 70%); background-repeat: no-repeat; background-size: 60% 100%; animation: shimmer 1s linear infinite; }
+/* Where two orbs touch in a match: one hairline ring that opens and fades. */
+@keyframes duel-ring { from { opacity: 0.6; transform: translate(-50%, -50%) scale(0.3); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.7); } }
+.duel-ring { animation: duel-ring 360ms var(--ease) both; }

@@ -12,6 +12,12 @@ export const AgentBody = z.object({
   attachments: z.array(z.object({ id: z.string().max(60), text: z.string().trim().min(1).max(4000), path: z.string().max(300) })).max(5).default([]),
   images: ImagesIn,
   model: z.unknown().optional(),
+  /** True when the message is an instruction typed into the live browser's own box: the browser agent acts on the page that is already open. */
+  browse: z.boolean().optional(),
+  /** Chat (default), Battle or Loop, read leniently by parseMode (lib/arena/mode.ts). */
+  mode: z.unknown().optional(),
+  /** The scenarios a person approved or wrote for a Battle or Loop; checked by readPlan before anything runs. */
+  approved: z.unknown().optional(),
   /** Minutes east of UTC where the user is (for "daily 09:00" in an automation UltraPal creates). */
   tz: z.number().int().min(-840).max(840).optional(),
 });

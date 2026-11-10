@@ -1,7 +1,9 @@
 "use client";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useStickToBottom } from "@/components/thread/Dock";
 import { IconArrowDown, IconBoard, IconClock, IconGlobe, IconLayers, IconPlus } from "@/components/ui/icons";
+import { UltraOrb } from "@/components/orbs/Orbs";
+import { ultraState } from "@/components/orbs/mood";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { useAgent } from "./AgentProvider";
 import { PromptBox } from "./PromptBox";
@@ -23,12 +25,14 @@ export function AgentHome() {
   const size = runs.reduce((n, r) => n + r.answer.length + r.timeline.length + r.agents.reduce((m, a) => m + a.steps.length + a.terms.length + a.files.length, 0), 0);
   const stick = useStickToBottom(scroller, size);
   const hasTabs = panel.tabs.length > 0;
+  const ultra = useMemo(() => ultraState(runs.at(-1), busy), [runs, busy]);
 
   if (runs.length === 0) {
     return (
       <main className="h-full overflow-y-auto" data-testid="agent-home">
         <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center gap-6 px-6 py-10">
           <header>
+            <UltraOrb size={120} state={ultra} className="-ml-2 mb-1" />
             <h1 className="font-serif text-[40px] leading-tight text-fg">{PAL_NAMES.main}</h1>
             <p className="mt-1 text-[15px] text-fg-muted">Research the web, drive a live browser, run commands, and move sandbox money only when a verdict computed in code says so.</p>
           </header>
@@ -56,6 +60,7 @@ export function AgentHome() {
   return (
     <main className="flex h-full min-h-0 flex-col" data-testid="agent-home">
       <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+        <UltraOrb size={36} state={ultra} />
         <h1 className="text-[15px] font-medium text-fg">{PAL_NAMES.main}</h1>
         <span className="text-[12px] text-fg-dim">{busy ? "working…" : "ready"}</span>
         <span className="ml-auto flex items-center gap-1">
@@ -68,7 +73,7 @@ export function AgentHome() {
       <div className="relative min-h-0 flex-1">
         <div ref={scroller} onScroll={stick.onScroll} className="h-full overflow-y-auto" data-testid="agent-thread">
           <div className="mx-auto w-full max-w-[760px] space-y-8 px-5 pb-8 pt-2">
-            {runs.map((r) => <RunView key={r.id} run={r} />)}
+            {runs.map((r, i) => <RunView key={r.id} run={r} latest={i === runs.length - 1} />)}
           </div>
         </div>
         {stick.away && (

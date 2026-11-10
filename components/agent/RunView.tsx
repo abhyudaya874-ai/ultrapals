@@ -2,8 +2,7 @@
 import { formatDuration } from "@/components/thread/format";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { Pill } from "@/components/ui/Pill";
-import { IconAgent, IconMail, IconDollar, IconGlobe, IconList, IconSearch, IconTerminal } from "@/components/ui/icons";
-import type { AgentRole } from "@/lib/computer/events";
+import { IconAgent, IconGlobe, IconMail, IconTerminal } from "@/components/ui/icons";
 import { palName } from "@/lib/computer/pals";
 import { disclosureRows, processLabel } from "@/lib/computer/process";
 import { subagents, type AgentRow, type Run } from "@/lib/computer/run";
@@ -11,14 +10,16 @@ import { AnswerText } from "./AnswerText";
 import { ExamPanel } from "./ExamPanel";
 import { SituationPanel } from "./SituationPanel";
 import { SearchedSites } from "./SearchedSites";
+import { AgentOrb } from "@/components/orbs/Orbs";
+import { ArenaSummary } from "@/components/arena/ArenaSummary";
+import { HandoffCard } from "./HandoffCard";
+import type { Mood } from "@/components/orbs/mood";
 import { SourceStack } from "@/components/ui/SiteChip";
 import { groupVisits } from "@/lib/computer/visits";
 import { useAgent } from "./AgentProvider";
 import { ChartBlock } from "./ChartBlock";
 import { FileChanges } from "./FileChanges";
 
-const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
-const ICON: Record<AgentRole, typeof IconAgent> = { main: IconAgent, research: IconSearch, browser: IconGlobe, terminal: IconTerminal, promise: IconDollar, rival: IconList, superpal: IconList, situation: IconList, sandbox: IconTerminal };
 const CHIP = "inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg";
 
 const nameOf = palName;
@@ -28,7 +29,7 @@ function summary(a: AgentRow): string {
   return last?.label ?? "Starting…";
 }
 
-export function RunView({ run }: { run: Run }) {
+export function RunView({ run, latest = true }: { run: Run; latest?: boolean }) {
   const { openWorkspace, liveViewUrl, send, busy } = useAgent();
   const running = run.status === "running";
   const subs = subagents(run);
@@ -64,6 +65,9 @@ export function RunView({ run }: { run: Run }) {
         {running && now && <span className="text-fg-dim"> · {now}</span>}
       </p>
 
+      {run.arena && <ArenaSummary run={run} />}
+      {run.handoff && <HandoffCard h={run.handoff} latest={latest} />}
+
       {(rows.length > 0 || run.visits.length > 0) && (
         <Disclosure key={String(running)} testId="process" defaultOpen={running} label={processLabel(run)} meta={`${subs.length} agent${subs.length === 1 ? "" : "s"}${run.model ? ` · ${run.model}` : ""}`}>
           <ul className="ml-1 space-y-1 border-l border-line pl-3.5">
@@ -85,13 +89,11 @@ export function RunView({ run }: { run: Run }) {
               const row = rows.find((r) => r.agent.id === t.id);
               if (!row) return null;
               const a = row.agent;
-              const Icon = ICON[a.role];
               return (
                 <li key={a.id} className="rise" style={{ marginLeft: row.depth * 16 }}>
                   <button type="button" data-testid="agent-row" onClick={() => openWorkspace(a.role === "browser" ? "browser" : a.role === "terminal" ? "terminal" : "agent", a.id)}
                     className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13.5px] hover:bg-surface-2">
-                    <span className={`inline-block size-2 shrink-0 rounded-full ${DOT[a.state]}`} />
-                    <Icon className="size-4 shrink-0 text-fg-muted" />
+                    <AgentOrb id={a.id} role={a.role} size={24} live={a.state === "running"} mood={a.state === "error" ? "error" : a.state === "running" ? (a.role === "research" ? "thinking" : "busy") : ("done" as Mood)} />
                     <span className="shrink-0 text-fg">{a.title}</span>
                     <span className="truncate text-fg-dim">{summary(a)}</span>
                     <span className="ml-auto shrink-0 tabular-nums text-fg-dim">{a.ms !== undefined ? formatDuration(a.ms) : ""}</span>

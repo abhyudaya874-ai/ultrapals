@@ -1,7 +1,9 @@
 "use client";
 import { Fragment } from "react";
+import { HoverCard } from "@/components/ui/HoverCard";
 import { segmentCitations } from "@/lib/research/citations";
 import type { Source } from "@/lib/research/sources";
+import { CiteCard } from "./CiteCard";
 
 /** **bold** and `code` only: model answers are short and the sources are the point. No raw HTML ever reaches the DOM. */
 function Inline({ text }: { text: string }) {
@@ -19,11 +21,13 @@ function Inline({ text }: { text: string }) {
 function Cite({ ns, sources, onOpen }: { ns: number[]; sources: Source[]; onOpen: (n: number) => void }) {
   const first = sources[ns[0] - 1];
   return (
-    <button type="button" data-testid="cite" onClick={() => onOpen(ns[0])} title={ns.map((n) => sources[n - 1]?.title).filter(Boolean).join(" · ")}
-      className="mx-0.5 inline-flex h-[18px] max-w-[9rem] translate-y-[-1px] items-center gap-1 truncate rounded-full bg-surface-2 px-1.5 align-middle font-sans text-[11px] text-fg-muted transition-colors hover:bg-line hover:text-fg">
-      <span className="truncate">{first?.host ?? ns[0]}</span>
-      {ns.length > 1 && <span className="text-fg-dim">+{ns.length - 1}</span>}
-    </button>
+    <HoverCard card={<CiteCard ns={ns} sources={sources} />} className="inline-block align-middle">
+      <button type="button" data-testid="cite" onClick={() => onOpen(ns[0])}
+        className="press mx-0.5 inline-flex h-[18px] max-w-[9rem] translate-y-[-1px] items-center gap-1 truncate rounded-full bg-surface-2 px-1.5 align-middle font-sans text-[11px] text-fg-muted hover:bg-line hover:text-fg">
+        <span className="truncate">{first?.host ?? ns[0]}</span>
+        {ns.length > 1 && <span className="text-fg-dim">+{ns.length - 1}</span>}
+      </button>
+    </HoverCard>
   );
 }
 

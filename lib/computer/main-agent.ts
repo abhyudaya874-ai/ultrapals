@@ -1,5 +1,6 @@
 import type { InImage } from "@/lib/integrations/vision";
 import { usedSources } from "@/lib/research/citations";
+import { freshHandoff, handoffMessage, parseResume, pendingNote, resumeTask, type Handoff } from "@/lib/browse/handoff";
 import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
@@ -22,6 +23,11 @@ import { runTerminalAgent } from "./terminal-agent";
 const MAX_ROUNDS = 6;
 const MAX_ROUNDS_CAP = 10;
 
+/** The `model` a run reports when the planner used every round without writing an answer. What the team found is shown, but the run did not conclude. */
+export const NO_FINAL_ANSWER = "no final answer";
+/** The `model` a run reports when it stopped for the person to act in the live browser. */
+export const WAITING_FOR_YOU = "waiting for you";
+
 export interface MainInput {
   prompt: string;
   attachments: Attachment[];
@@ -35,6 +41,14 @@ export interface MainInput {
   deny?: readonly string[];
   /** Minutes east of UTC where the user is, so "daily 09:00" means their 09:00. */
   tzOffsetMin?: number;
+  /** True once the run is short of time: the next planning round must be the answer, whatever budget of rounds is left. */
+  hurry?: () => boolean;
+  /** Run this delegation before the first planning round (the person typed an instruction into the live browser: skip deciding who should do it). */
+  firstDelegate?: { agent: "browser"; task: string; /** The pause this continues, when the person has just helped. */ resumed?: Handoff };
+  /** Steps the browser agent may take in this run. */
+  browserSteps?: number;
+  /** A person is watching: the browser agent may stop and ask them to act in the live browser (a CAPTCHA, a sign-in). Off for contenders and automations. */
+  interactive?: boolean;
 }
 
 const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent, rival: runRivalAgent, situation: runSituationAgent } as const;
@@ -69,13 +83,60 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     }
   }
 
+  /** Hands one task to a subagent, shows its row, and records what it found for the next planning round. Returns true when the subagent stopped for the person. */
+  async function* delegate(agent: keyof typeof RUNNERS, task: string, resumed?: Handoff): AsyncGenerator<CEvent, boolean> {
+    const before = session.handoff;
+    const id = `${agent}-${++session.seq}`;
+    const ts = Date.now();
+    yield { kind: "message", id: `to-${id}`, from: "main", to: id, text: task };
+    yield { kind: "agent", id, role: agent, title: TITLES[agent], state: "running" };
+    const ctx: SubCtx = { agent: id, session, deps, signal, interactive: input.interactive, ...(resumed ? { resumed } : {}), ...(agent === "browser" && input.browserSteps ? { maxSteps: input.browserSteps } : {}) };
+    let result: string;
+    let failed = false;
+    try {
+      result = yield* RUNNERS[agent](ctx, task);
+    } catch (e) {
+      failed = true;
+      result = `The ${agent} agent crashed: ${e instanceof Error ? e.message : "unknown error"}`;
+    }
+    yield { kind: "agent", id, role: agent, title: TITLES[agent], state: failed ? "error" : "ok", ms: Date.now() - ts };
+    yield { kind: "message", id: `from-${id}`, from: id, to: "main", text: result.slice(0, 1200) };
+    results.push({ agent, task, result });
+    return !!session.handoff && session.handoff !== before;
+  }
+
+  /** The browser agent needs the person. The reply is fixed text, so it says the same thing every time: what to do, and that any message continues. */
+  async function* waitForPerson(): AsyncGenerator<CEvent> {
+    const text = handoffMessage(session.handoff!);
+    session.history = pushHistory(pushHistory(session.history, { role: "user", content: input.prompt }), { role: "assistant", content: text });
+    yield { kind: "answer", delta: text };
+    yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "ok", ms: Date.now() - t0 };
+    yield { kind: "done", used: [], model: WAITING_FOR_YOU, ms: Date.now() - t0 };
+  }
+
+  // If the browser agent stopped for the person last time, this message is their reply. "Continue" in any of its forms resumes the same task from
+  // the page that is open now; anything else goes to the planner together with what was pending, so it can still choose to resume.
+  let firstDelegate = input.firstDelegate;
+  let pending = "";
+  const waiting = freshHandoff(session.handoff, deps.model.now());
+  session.handoff = undefined;
+  if (waiting) {
+    const reply = parseResume(input.prompt);
+    if (reply.resume && !input.deny?.includes("browser")) firstDelegate = { agent: "browser", task: resumeTask(waiting, reply.extra), resumed: waiting };
+    else if (!reply.resume) pending = pendingNote(waiting);
+  }
+  if (firstDelegate && !input.deny?.includes(firstDelegate.agent) && (yield* delegate(firstDelegate.agent, firstDelegate.task, firstDelegate.resumed))) {
+    yield* waitForPerson();
+    return;
+  }
+
   for (let round = 1; round <= rounds; round++) {
     if (signal?.aborted) return;
     const messages = [
       { role: "system" as const, content: MAIN_SYSTEM },
       {
         role: "user" as const,
-        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === rounds, files: workspaceDigest(session.files), images: imageNotes }),
+        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === rounds || (input.hurry?.() ?? false) || (!!firstDelegate && round === 1), files: workspaceDigest(session.files), images: imageNotes, ...(pending ? { pending } : {}) }),
       },
     ];
     // The final answer is streamed word by word as the model writes it (not dumped at the end); `streamed` is what the user already saw.
@@ -142,23 +203,19 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       results.push({ agent: "system", task: `delegate to ${a.agent}`, result: `${a.agent} is not available in this run. Use another agent or answer with what you have.` });
       continue;
     }
-    const id = `${a.agent}-${++session.seq}`;
-    const ts = Date.now();
-    yield { kind: "message", id: `to-${id}`, from: "main", to: id, text: a.task };
-    yield { kind: "agent", id, role: a.agent, title: TITLES[a.agent], state: "running" };
-    const ctx: SubCtx = { agent: id, session, deps, signal };
-    let result: string;
-    let failed = false;
-    try {
-      result = yield* RUNNERS[a.agent](ctx, a.task);
-    } catch (e) {
-      failed = true;
-      result = `The ${a.agent} agent crashed: ${e instanceof Error ? e.message : "unknown error"}`;
+    if (yield* delegate(a.agent, a.task)) {
+      yield* waitForPerson();
+      return;
     }
-    yield { kind: "agent", id, role: a.agent, title: TITLES[a.agent], state: failed ? "error" : "ok", ms: Date.now() - ts };
-    yield { kind: "message", id: `from-${id}`, from: id, to: "main", text: result.slice(0, 1200) };
-    results.push({ agent: a.agent, task: a.task, result });
   }
+
+  // The rounds ran out and the planner still asked for more work instead of answering: end with what the team did find, not in silence.
+  const found = [...results].reverse().find((r) => r.agent !== "system");
+  const text = found ? `I ran out of planning steps before writing a full answer. This is what my team found:\n\n${found.result.slice(0, 1500)}` : "I could not produce an answer. Please try again.";
+  session.history = pushHistory(pushHistory(session.history, { role: "user", content: input.prompt }), { role: "assistant", content: text });
+  yield { kind: "answer", delta: text };
+  yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "ok", ms: Date.now() - t0 };
+  yield { kind: "done", used: usedSources(text, session.sources.length), model: NO_FINAL_ANSWER, ms: Date.now() - t0 };
 }
 
 /** UltraPal's `automate` action: validated in code, gated on the user's own words, then created through the same store as the Automations page. */

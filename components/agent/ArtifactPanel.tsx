@@ -155,7 +155,7 @@ export function ArtifactPanel({ docked }: { docked: boolean }) {
   };
   const tabs = panel.tabs.flatMap((id) => { const l = label(id); return l ? [{ id, ...l }] : []; });
   const active = parseTab(panel.active ?? "");
-  const shell = docked ? `fixed inset-0 z-[55] flex flex-col bg-canvas lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${size.dragging ? "" : "lg:transition-[width] lg:duration-200"} ${size.collapsed ? "lg:hidden" : ""}` : "fixed inset-0 z-[55] flex flex-col bg-canvas lg:absolute lg:z-30";
+  const shell = docked ? `fixed inset-0 z-[55] flex flex-col bg-canvas lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${size.dragging ? "" : "lg:transition-[width] lg:duration-[160ms] lg:ease-[cubic-bezier(0.2,0.8,0.2,1)]"} ${size.collapsed ? "lg:hidden" : ""}` : "fixed inset-0 z-[55] flex flex-col bg-canvas lg:absolute lg:z-30";
 
   return (
     <>
@@ -186,7 +186,7 @@ export function ArtifactPanel({ docked }: { docked: boolean }) {
           <div className="relative shrink-0" ref={menuRef}>
             <button type="button" onClick={() => setMenu((m) => !m)} aria-label="Open an artifact" aria-expanded={menu} title="Open an app artifact" className="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"><IconPlus className="size-4" /></button>
             {menu && (
-              <ul className="absolute left-0 top-9 z-10 w-64 rounded-card border border-line bg-surface p-1 shadow-xl" role="menu">
+              <ul className="pop-in-down absolute left-0 top-9 z-10 w-64 rounded-card border border-line bg-surface p-1 shadow-xl" role="menu">
                 {(Object.keys(APP_ARTIFACTS) as AppArtifactName[]).map((n) => {
                   const I = APP_ICON[n];
                   return (

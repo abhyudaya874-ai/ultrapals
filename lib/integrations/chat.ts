@@ -12,6 +12,8 @@ export interface ChatDelta {
   reasoning?: string;
   content?: string;
   error?: string;
+  /** Exact token counts, when the provider reports them (some do in the last chunk of a stream). */
+  usage?: { prompt: number; completion: number };
 }
 
 const BASE: Record<ChatProvider, string> = {
@@ -69,8 +71,11 @@ export function isAllowedModel(provider: ChatProvider, model: string): boolean {
 }
 
 const Chunk = z.object({
-  choices: z.array(z.object({ delta: z.object({ content: z.string().nullish(), reasoning: z.string().nullish() }).optional() })).optional(),
+  // Providers name the thinking differently: `reasoning` (OpenRouter, Groq) or `reasoning_content` (NVIDIA, Bluesminds and other OpenAI-compatible hosts)
+  choices: z.array(z.object({ delta: z.object({ content: z.string().nullish(), reasoning: z.string().nullish(), reasoning_content: z.string().nullish() }).optional() })).optional(),
   error: z.object({ message: z.string().optional() }).optional(),
+  usage: z.object({ prompt_tokens: z.number().optional(), completion_tokens: z.number().optional() }).nullish(),
+  x_groq: z.object({ usage: z.object({ prompt_tokens: z.number().optional(), completion_tokens: z.number().optional() }).nullish() }).nullish(),
 });
 
 /**
@@ -99,8 +104,11 @@ export function parseChatSse(buffer: string): { deltas: ChatDelta[]; rest: strin
     if (!c.success) continue;
     if (c.data.error) deltas.push({ error: c.data.error.message ?? "stream error" });
     const d = c.data.choices?.[0]?.delta;
-    if (d?.reasoning) deltas.push({ reasoning: d.reasoning });
+    const think = d?.reasoning || d?.reasoning_content;
+    if (think) deltas.push({ reasoning: think });
     if (d?.content) deltas.push({ content: d.content });
+    const u = c.data.usage ?? c.data.x_groq?.usage;
+    if (u && typeof u.prompt_tokens === "number") deltas.push({ usage: { prompt: u.prompt_tokens, completion: u.completion_tokens ?? 0 } });
   }
   return { deltas, rest, done };
 }

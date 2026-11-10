@@ -14,6 +14,7 @@ export interface Resizable {
     onPointerDown: (e: PointerEvent<HTMLDivElement>) => void;
     onPointerMove: (e: PointerEvent<HTMLDivElement>) => void;
     onPointerUp: () => void;
+    onPointerCancel: () => void;
     onDoubleClick: () => void;
     onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void;
   };
@@ -21,13 +22,19 @@ export interface Resizable {
   style: CSSProperties;
 }
 
-/** A panel whose edge can be dragged, collapsed to a rail, and remembered between visits. */
+/**
+ * A panel whose edge can be dragged, collapsed to a rail, and remembered between visits. While the edge is dragged the width is written straight
+ * to a CSS variable on the page (`--pw-<name>`), so no component renders per pointer move; React hears about the new width once, when the drag
+ * ends, or sooner if the panel snaps shut or open.
+ */
 export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
   const l = LIMITS[name];
   const key = `sp-panel-${name}`;
+  const rootVar = `--pw-${name}`;
   const [pref, setPref] = useState<PanelPref>({ w: l.def, collapsed: false });
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; pref: PanelPref } | null>(null);
+  const live = useRef<PanelPref | null>(null);
   const latest = useRef(pref);
   latest.current = pref;
   useEffect(() => {
@@ -35,6 +42,16 @@ export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
   }, [key, l]);
   const save = useCallback((p: PanelPref) => { try { localStorage.setItem(key, JSON.stringify(p)); } catch { /* not remembered */ } }, [key]);
   const set = useCallback((p: PanelPref) => { setPref(p); save(p); }, [save]);
+
+  const finish = () => {
+    const end = live.current ?? latest.current;
+    start.current = null;
+    live.current = null;
+    setDragging(false);
+    setPref(end);
+    save(end);
+    document.documentElement.style.removeProperty(rootVar);
+  };
 
   return {
     pref,
@@ -44,12 +61,20 @@ export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
     setCollapsed: (c) => set({ ...latest.current, collapsed: c }),
     handle: {
       onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); start.current = { x: e.clientX, pref: latest.current }; setDragging(true); },
-      onPointerMove: (e) => { const s = start.current; if (s) setPref(dragPanel(s.pref, e.clientX - s.x, side, l)); },
-      onPointerUp: () => { start.current = null; setDragging(false); save(latest.current); },
+      onPointerMove: (e) => {
+        const s = start.current;
+        if (!s) return;
+        const next = dragPanel(s.pref, e.clientX - s.x, side, l);
+        live.current = next;
+        if (next.collapsed !== latest.current.collapsed) setPref(next); // snapping shut or open changes what is on screen: that one needs a render
+        document.documentElement.style.setProperty(rootVar, `${next.w}px`);
+      },
+      onPointerUp: finish,
+      onPointerCancel: finish,
       onDoubleClick: () => set({ ...latest.current, collapsed: !latest.current.collapsed }),
       onKeyDown: (e) => { const n = keyPanel(latest.current, e.key, side, l); if (n) { e.preventDefault(); set(n); } },
     },
-    style: { "--panel-w": `${pref.w}px` } as CSSProperties,
+    style: { "--panel-w": `var(${rootVar}, ${pref.w}px)` } as CSSProperties,
   };
 }
 

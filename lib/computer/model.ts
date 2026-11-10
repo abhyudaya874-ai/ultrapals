@@ -49,7 +49,8 @@ export function orderModels(models: ModelRef[], k: number, now: number, cool: Re
 
 export const MODEL_TIMEOUT_MS = 40_000;
 
-export type ModelResult = { ok: true; text: string; model: string; provider: ChatProvider } | { ok: false; error: string };
+/** A failed call carries `rejected` (the last reply `accept` refused) when models did answer but none with something usable, so a caller can tell that from "no model answered". */
+export type ModelResult = { ok: true; text: string; model: string; provider: ChatProvider } | { ok: false; error: string; rejected?: string };
 
 /**
  * One LLM turn. Streams the model's reasoning as `reasoning` events for `agent`; content is returned (and, with
@@ -62,6 +63,7 @@ export async function* callModel(
   o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number; accept?: (text: string) => boolean; streamAnswer?: (accum: string) => string } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   let last = "no model available";
+  let rejected: string | undefined;
   for (const m of orderModels(deps.models, deps.rotate === false ? 0 : (o.round ?? 0), deps.now())) {
     if (o.signal?.aborted) return { ok: false, error: "cancelled" };
     const deadline = AbortSignal.timeout(o.modelTimeoutMs ?? MODEL_TIMEOUT_MS); // a stalled model costs this long, not the adapter's 60s
@@ -103,10 +105,10 @@ export async function* callModel(
       continue;
     }
     if (!text.trim()) { last = "empty reply"; continue; }
-    if (o.accept && !o.accept(text)) { last = `${m.model.split("/").pop()} replied but the reply was unusable`; continue; } // try the next model, not the next round
+    if (o.accept && !o.accept(text)) { last = `${m.model.split("/").pop()} replied but the reply was unusable`; rejected = text; continue; } // try the next model, not the next round
     return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider };
   }
-  return { ok: false, error: `every allowlisted model failed: ${last}` };
+  return rejected === undefined ? { ok: false, error: `every allowlisted model failed: ${last}` } : { ok: false, error: `every allowlisted model failed: ${last}`, rejected };
 }
 
 /**
@@ -146,6 +148,7 @@ export async function* callModelHedged(
   const result = new Promise<ModelResult>((resolve) => {
     let pending = n;
     let err = "no model available";
+    let rejected: string | undefined;
     runs.forEach((p, i) =>
       p.then(
         (r) => {
@@ -154,7 +157,8 @@ export async function* callModelHedged(
             resolve(r);
           } else {
             if (r.error !== "cancelled" || err === "no model available") err = r.error;
-            if (--pending === 0) resolve({ ok: false, error: err });
+            if (r.rejected !== undefined) rejected = r.rejected;
+            if (--pending === 0) resolve(rejected === undefined ? { ok: false, error: err } : { ok: false, error: err, rejected });
           }
         },
         (e) => { if (--pending === 0) resolve({ ok: false, error: e instanceof Error ? e.message : "hedge failed" }); },

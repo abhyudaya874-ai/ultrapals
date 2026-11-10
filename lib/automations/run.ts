@@ -1,5 +1,5 @@
 import type { Deps } from "@/lib/computer/ctx";
-import { runMain } from "@/lib/computer/main-agent";
+import { NO_FINAL_ANSWER, runMain } from "@/lib/computer/main-agent";
 import { modelDepsFor, roundsFor } from "@/lib/computer/models";
 import { applyCEvent, newRun, subagents, type Run } from "@/lib/computer/run";
 import type { Session } from "@/lib/computer/session";
@@ -14,7 +14,7 @@ export const DENIED_IN_AUTOMATIONS = ["promise", "automate"] as const;
 
 /** Pure. The prompt an automation runs with: it tells the agent nobody is watching, so it must deliver instead of asking. */
 export const framePrompt = (a: Pick<Automation, "name" | "prompt">, atMs: number): string =>
-  `[Unattended automation "${a.name}", started ${new Date(atMs).toISOString()}. Nobody is watching and nobody can answer questions: do the work, save any table as a CSV and any findings as a markdown note, and finish with a short report of what you found. Do not create automations.]\n\n${a.prompt}`;
+  `[Unattended automation "${a.name}", started ${new Date(atMs).toISOString()}. Nobody is watching and nobody can answer questions: do the work, save any table as a CSV and any findings as a markdown note, and finish with a short report of what you found. If a site blocks the browser (a CAPTCHA, a sign-in) it reports "Blocked:": do not retry it, use another source and say in the report what was blocked. Do not create automations.]\n\n${a.prompt}`;
 
 /**
  * Pure. What is kept of a finished run: the answer, which agents worked, the files they made (capped), the sources. Files written to the
@@ -34,15 +34,19 @@ export function summarizeRun(o: { run: Run; files: Readonly<Record<string, strin
     files.push({ path: f.path, content });
   }
   const agents = [...new Set(subagents(run).map((a) => a.role))];
-  // A run that "finished" with no report (or just brackets) did not do its job; saying "ok" would hide that.
-  const empty = run.status === "done" && /^[\s{}[\]"',:]*$/.test(run.answer);
+  // A run that "finished" with no report (or just brackets) did not do its job, and neither did one whose planner used every round without answering
+  // (its answer holds what the team found, which is worth keeping, but it is not a report). Saying "ok" would hide that.
+  const ranOut = run.status === "done" && run.model === NO_FINAL_ANSWER;
+  const empty = run.status === "done" && !ranOut && /^[\s{}[\]"',:]*$/.test(run.answer);
+  const good = run.status === "done" && !ranOut && !empty;
+  const why = empty ? "the agent finished without writing a report" : ranOut ? "the run ended early: the planner used all its steps without writing a report" : (run.error ?? "the run did not finish").slice(0, 300);
   return {
     id: o.id,
     atMs: o.atMs,
     ms: o.ms,
-    status: run.status === "done" && !empty ? "ok" : "error",
+    status: good ? "ok" : "error",
     answer: run.answer.slice(0, 6000),
-    ...(run.status === "done" && !empty ? {} : { error: empty ? "the agent finished without writing a report" : (run.error ?? "the run did not finish").slice(0, 300) }),
+    ...(good ? {} : { error: why }),
     agents,
     files,
     sources: run.sources.slice(0, 8).map((s) => ({ title: s.title.slice(0, 120), url: s.url })),

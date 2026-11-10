@@ -1,7 +1,9 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useStickToBottom } from "@/components/thread/Dock";
-import { IconAgent, IconArrowDown, IconPlus, IconX } from "@/components/ui/icons";
+import { IconArrowDown, IconPlus, IconX } from "@/components/ui/icons";
+import { UltraOrb } from "@/components/orbs/Orbs";
+import { ultraState } from "@/components/orbs/mood";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { Rail, ResizeHandle, useResizable } from "@/components/shell/Resizable";
 import { useAgent } from "./AgentProvider";
@@ -14,6 +16,7 @@ const HINTS = ["Why is this promise waiting?", "Build a tiny site in the termina
 export function AgentPanel() {
   const { open, toggle, runs, busy, newChat, send } = useAgent();
   const rs = useResizable("dock", "right");
+  const ultra = useMemo(() => ultraState(runs.at(-1), busy), [runs, busy]);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const size = runs.reduce((n, r) => n + r.answer.length + r.timeline.length + r.agents.reduce((m, a) => m + a.steps.length + a.terms.length + a.files.length, 0), 0);
@@ -30,9 +33,9 @@ export function AgentPanel() {
     <>
     <ResizeHandle r={rs} label="chat" side="right" />
     {rs.collapsed && <Rail title="UltraPal" side="right" onOpen={() => rs.setCollapsed(false)} />}
-    <aside data-agent-panel data-testid="agent-panel" style={rs.style} className={`fixed inset-0 z-50 flex flex-col bg-sidebar lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${rs.dragging ? "" : "lg:transition-[width] lg:duration-200"} ${rs.collapsed ? "lg:hidden" : ""}`}>
+    <aside data-agent-panel data-testid="agent-panel" style={rs.style} className={`fixed inset-0 z-50 flex flex-col bg-sidebar lg:static lg:z-auto lg:w-[var(--panel-w)] lg:shrink-0 ${rs.dragging ? "" : "lg:transition-[width] lg:duration-[160ms] lg:ease-[cubic-bezier(0.2,0.8,0.2,1)]"} ${rs.collapsed ? "lg:hidden" : ""}`}>
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
-        <IconAgent className="size-4 text-fg-muted" />
+        <UltraOrb size={32} state={ultra} />
         <h2 className="text-[15px] font-medium text-fg">{PAL_NAMES.main}</h2>
         <span className="text-[12px] text-fg-dim">{busy ? "working…" : "ready"}</span>
         <button type="button" onClick={newChat} aria-label="New chat" title="New chat" className="ml-auto grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"><IconPlus className="size-4" /></button>
@@ -50,7 +53,7 @@ export function AgentPanel() {
                 </ul>
               </div>
             )}
-            {runs.map((r) => <RunView key={r.id} run={r} />)}
+            {runs.map((r, i) => <RunView key={r.id} run={r} latest={i === runs.length - 1} />)}
           </div>
         </div>
         {stick.away && (

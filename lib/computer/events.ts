@@ -1,4 +1,6 @@
 import type { ExamCard } from "@/lib/pals/card";
+import type { Bracket } from "@/lib/arena/bracket";
+import type { ArenaFinal, ContenderInfo, Facts, MatchResult, Mode, Outcome, Score } from "@/lib/arena/types";
 import type { ChartSpec } from "@/lib/charts/spec";
 import type { DiffLine } from "./diff";
 import type { SituationCard } from "@/lib/pals/situation";
@@ -29,6 +31,17 @@ export type CEvent =
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string; patch?: DiffLine[]; cut?: number; mode?: "write" | "read" }
   /** A chart UltraPal chose for a workspace table. `spec.data` is the table's own rows; `note` says when the chosen type did not fit and another was drawn. */
   | { kind: "chart"; agent: string; id: string; spec: ChartSpec; note?: string; source?: string }
+  /** UltraPals Battle or Loop begins. `contenders` are the panels (in a loop, the rounds already planned; an adaptive loop adds them as it goes). */
+  | { kind: "arena"; mode: Mode; plan: "auto" | "ai" | "manual"; scenario: string; question: string; max: number; adaptive: boolean; contenders: ContenderInfo[]; bracket?: Bracket }
+  /** One event from inside one contender's own run (its agents, browser, terminal, files, answer). */
+  | { kind: "contender"; id: string; e: CEvent }
+  | { kind: "contender_add"; info: ContenderInfo }
+  | { kind: "contender_done"; id: string; outcome: Outcome | null; facts: Facts; ok: boolean }
+  | { kind: "arena_phase"; phase: "running" | "judging" | "writing" | "done"; note?: string }
+  | { kind: "arena_scores"; scores: Score[]; winner: string; judge: string | null; why?: string; round?: number }
+  /** A knockout match was decided (battle only). */
+  | { kind: "arena_match"; match: MatchResult }
+  | { kind: "arena_final"; final: ArenaFinal }
   /** Ask the UI to open an app artifact (newsroom, dashboard, timeline, proctor) as a tab. */
   | { kind: "open"; artifact: string; title: string }
   | { kind: "visit"; agent: string; id: string; action: "search" | "read"; label: string; url?: string; title?: string; via?: "tavily" | "exa" | "fetch" | "browser" | "terminal"; state: RunState; count?: number }
@@ -37,6 +50,8 @@ export type CEvent =
   | { kind: "sources"; sources: Source[] }
   | { kind: "workspace"; liveViewUrl: string }
   | { kind: "page"; url: string; title: string }
+  /** The agent cannot go on without the person (a CAPTCHA, a sign-in): the live browser is theirs until they say to continue. */
+  | { kind: "handoff"; agent: string; reason: string; need: "captcha" | "login" | "verification" | "asked"; url: string }
   | { kind: "answer"; delta: string }
   | { kind: "done"; used: number[]; model: string; ms: number }
   | { kind: "error"; message: string };

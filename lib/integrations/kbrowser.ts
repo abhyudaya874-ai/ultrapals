@@ -1,5 +1,6 @@
 import Kernel from "@onkernel/sdk";
 import { z } from "zod";
+import type { BrowserKey } from "@/lib/browse/actions";
 import type { El, Snapshot } from "@/lib/browse/snapshot";
 import { getEnv } from "@/lib/env";
 import { degrade, guard, isOn } from "./registry";
@@ -17,7 +18,7 @@ export interface LiveBrowser {
 export const VIEWPORT = { width: 1280, height: 800 } as const;
 
 const El_ = z.object({ i: z.number(), tag: z.string(), label: z.string(), role: z.string().optional(), href: z.string().optional(), type: z.string().optional(), x: z.number(), y: z.number() });
-const Snap = z.object({ url: z.string(), title: z.string(), text: z.string(), elements: z.array(El_) });
+const Snap = z.object({ url: z.string(), title: z.string(), text: z.string(), elements: z.array(El_), scroll: z.object({ y: z.number(), height: z.number(), view: z.number() }).optional() });
 const Pt = z.object({ x: z.number(), y: z.number() }).nullable();
 
 /** Pure. Guards the shape coming back from the page; a malformed snapshot is a degrade, never a crash. */
@@ -34,20 +35,36 @@ export function toScreen(x: number, y: number, b: Pick<LiveBrowser, "offX" | "of
 
 const SNAPSHOT_JS = `return await page.evaluate(() => {
   document.querySelectorAll("[data-sp-i]").forEach((e) => e.removeAttribute("data-sp-i"));
-  const sel = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[onclick]';
-  const out = [];
+  // A kiosk browser has no tabs a person could switch to, so links that would open a new tab open in this one.
+  if (!window.__spInPlace) {
+    window.__spInPlace = true;
+    document.addEventListener("click", (ev) => { const a = ev.target && ev.target.closest ? ev.target.closest("a[target]") : null; if (a) a.target = "_self"; }, true);
+    window.open = (u) => { if (u) location.href = String(u); return null; };
+  }
+  const sel = 'a[href],button,input:not([type=hidden]),textarea,select,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=switch],[role=option],[role=textbox],[role=combobox],[role=searchbox],[contenteditable=""],[contenteditable=true],[onclick]';
+  const found = [];
   for (const e of document.querySelectorAll(sel)) {
-    if (out.length >= 40) break;
     const r = e.getBoundingClientRect();
     const st = getComputedStyle(e);
-    if (r.width < 4 || r.height < 4 || st.visibility === "hidden" || st.display === "none" || r.bottom < 0 || r.top > innerHeight * 2.2 || r.right < 0 || r.left > innerWidth) continue;
+    if (r.width < 4 || r.height < 4 || st.visibility === "hidden" || st.display === "none" || st.pointerEvents === "none" || r.bottom < 0 || r.top > innerHeight * 2.2 || r.right < 0 || r.left > innerWidth) continue;
+    if (e.disabled || e.getAttribute("aria-hidden") === "true") continue;
+    found.push({ e, r, onScreen: r.top < innerHeight && r.bottom > 0 });
+  }
+  // what is on screen now comes first, so a long page's header links do not use up the list before the part the person sees
+  found.sort((a, b) => Number(b.onScreen) - Number(a.onScreen));
+  const out = [];
+  for (const { e, r } of found) {
+    if (out.length >= 45) break;
     const pw = e.type === "password";
-    const label = (e.innerText || e.getAttribute("aria-label") || e.placeholder || e.getAttribute("title") || e.getAttribute("alt") || (pw ? "" : e.value) || e.name || "").trim();
+    const lab = e.labels && e.labels[0] ? e.labels[0].innerText : "";
+    const label = (e.innerText || e.getAttribute("aria-label") || e.placeholder || lab || e.getAttribute("title") || e.getAttribute("alt") || (pw ? "" : e.value) || e.name || "").trim();
     const i = out.length;
     e.setAttribute("data-sp-i", String(i));
-    out.push({ i, tag: e.tagName.toLowerCase(), label: pw ? "password" : label.slice(0, 120), role: e.getAttribute("role") || undefined, href: e.tagName === "A" ? e.href : undefined, type: e.type || undefined, x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
+    const opts = e.tagName === "SELECT" ? " [" + Array.from(e.options).slice(0, 8).map((o) => o.text.trim()).join(" | ") + "]" : "";
+    out.push({ i, tag: e.tagName.toLowerCase(), label: (pw ? "password" : label.replace(/\\s+/g, " ").slice(0, 110)) + opts, role: e.getAttribute("role") || undefined, href: e.tagName === "A" ? e.href : undefined, type: e.type || undefined, x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
   }
-  return { url: location.href, title: document.title, text: (document.body ? document.body.innerText : "").replace(/\\s+\\n/g, "\\n").slice(0, 4000), elements: out };
+  const de = document.documentElement;
+  return { url: location.href, title: document.title, text: (document.body ? document.body.innerText : "").replace(/\\s+\\n/g, "\\n").slice(0, 4000), elements: out, scroll: { y: Math.round(scrollY), height: Math.round(Math.max(de.scrollHeight, document.body ? document.body.scrollHeight : 0)), view: innerHeight } };
 });`;
 
 const client = () => new Kernel({ apiKey: getEnv().KERNEL_API_KEY });
@@ -65,7 +82,9 @@ export async function openBrowser(signal?: AbortSignal): Promise<AdapterResult<L
   if (!isOn("kernel")) return degrade("kernel off");
   return guard("kernel", async () => {
     const k = client();
-    const b = await k.browsers.create({ headless: false, timeout_seconds: 300, viewport: VIEWPORT }, { signal });
+    // Kiosk mode: the live view shows only the page (the app draws its own address bar and buttons). The 10 minute inactivity limit is longer than
+    // the session's own idle limit (8 minutes), so a browser is never deleted behind the app's back while it is still being used.
+    const b = await k.browsers.create({ headless: false, kiosk_mode: true, timeout_seconds: 600, viewport: VIEWPORT }, { signal });
     if (!b.browser_live_view_url) {
       await k.browsers.deleteByID(b.session_id).catch(() => undefined);
       return degrade("kernel: no live view for this session");
@@ -109,13 +128,17 @@ export function resolveNavUrl(url: string): string {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d{2,5})?(\/|$)/i.test(url.trim()) ? url.trim() : assertPublicHttpUrl(url);
 }
 
+/** Pure. Playwright's error text without its "Call log:" tail and without the stack, so it can be shown to a person or a model. */
+export const plainError = (m: string): string => m.split(/\n\s*Call log:/i)[0].replace(/^kernel:\s*/i, "").replace(/^page\.goto:\s*/i, "").trim().slice(0, 200);
+
 export async function gotoUrl(b: LiveBrowser, url: string): Promise<AdapterResult<null>> {
   if (!isOn("kernel")) return degrade("kernel off");
-  return guard("kernel", async () => {
+  const r = await guard("kernel", async () => {
     const safe = resolveNavUrl(url);
     await run(b.id, `await page.goto(${JSON.stringify(safe)}, { waitUntil: "domcontentloaded", timeout: 20000 }); await page.waitForTimeout(600);`, 30);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   });
+  return r.ok ? r : { ...r, reason: plainError(r.reason) };
 }
 
 /** Smoothly moves the real, visible cursor onto element [index] (scrolling it into view first) and returns its screen point. */
@@ -155,11 +178,109 @@ export async function typeInto(b: LiveBrowser, el: El, text: string, submit: boo
   });
 }
 
-export async function scrollPage(b: LiveBrowser, direction: "down" | "up"): Promise<AdapterResult<null>> {
+export async function scrollPage(b: LiveBrowser, direction: "down" | "up", to?: "top" | "bottom"): Promise<AdapterResult<null>> {
   if (!isOn("kernel")) return degrade("kernel off");
   return guard("kernel", async () => {
-    await client().browsers.computer.scroll(b.id, { x: 640, y: 400, delta_y: direction === "down" ? 600 : -600 });
+    if (to) await run(b.id, `await page.evaluate((t) => window.scrollTo({ top: t === "top" ? 0 : document.documentElement.scrollHeight, behavior: "instant" }), ${JSON.stringify(to)});`, 10);
+    else await client().browsers.computer.scroll(b.id, { x: 640, y: 400, delta_y: direction === "down" ? 600 : -600 });
     await sleep(500);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   });
+}
+
+/** Where the browser is now, and whether Back and Forward have somewhere to go. */
+export interface BrowserState { url: string; title: string; canBack: boolean; canForward: boolean }
+const StateS = z.object({ url: z.string(), title: z.string(), canBack: z.boolean(), canForward: z.boolean() });
+
+const STATE_JS = `const s = await context.newCDPSession(page);
+const h = await s.send("Page.getNavigationHistory").catch(() => null);
+await s.detach().catch(() => {});
+let title = ""; try { title = await page.title(); } catch {}
+const cur = h ? h.currentIndex : 0;
+const here = h && h.entries[cur] ? h.entries[cur] : null;
+// a page that failed to load is shown by the browser as an error page; the address a person typed is still in the history
+const url = page.url().startsWith("chrome-error:") && here ? (here.userTypedURL || here.url) : page.url();
+return { url, title, canBack: !!h && cur > 0 && h.entries[cur - 1].url !== "about:blank", canForward: !!h && cur < h.entries.length - 1 };`;
+
+export async function browserState(b: LiveBrowser): Promise<AdapterResult<BrowserState>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    const p = StateS.safeParse(await run(b.id, STATE_JS, 15));
+    return p.success ? { ok: true as const, data: p.data } : degrade("kernel: unreadable browser state");
+  });
+}
+
+/**
+ * Back, forward or reload, like the buttons of a browser. Back and forward go through the browser's own history (a page restored from its cache
+ * fires no load event, so waiting for one would stall for the whole timeout). A step with nowhere to go leaves the page where it is.
+ */
+export async function navigate(b: LiveBrowser, op: "back" | "forward" | "reload"): Promise<AdapterResult<null>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    const code = op === "reload"
+      ? `await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null); await page.waitForTimeout(500);`
+      : `const s = await context.newCDPSession(page);
+         const h = await s.send("Page.getNavigationHistory");
+         const e = h.entries[h.currentIndex + (${op === "back" ? -1 : 1})];
+         if (e && e.url !== "about:blank") await s.send("Page.navigateToHistoryEntry", { entryId: e.id });
+         await s.detach().catch(() => {});
+         await page.waitForTimeout(700);`;
+    await run(b.id, code, 20);
+    return { ok: true as const, data: null };
+  });
+}
+
+/** Names the model uses for keys -> the names the computer API takes. */
+export const KEY_NAMES: Record<BrowserKey, string> = { Enter: "Return", Tab: "Tab", Escape: "Escape", Backspace: "BackSpace", Space: "space", ArrowDown: "Down", ArrowUp: "Up", ArrowLeft: "Left", ArrowRight: "Right", PageDown: "Page_Down", PageUp: "Page_Up", Home: "Home", End: "End" };
+
+export async function pressKey(b: LiveBrowser, key: BrowserKey): Promise<AdapterResult<null>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    await client().browsers.computer.pressKey(b.id, { keys: [KEY_NAMES[key]] });
+    await sleep(key === "Enter" ? 900 : 350);
+    return { ok: true as const, data: null };
+  });
+}
+
+export async function waitSeconds(b: LiveBrowser, seconds: number): Promise<AdapterResult<null>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    await run(b.id, `await page.waitForLoadState("domcontentloaded", { timeout: 4000 }).catch(() => {}); await page.waitForTimeout(${Math.max(1, Math.min(8, Math.round(seconds))) * 1000});`, 20);
+    return { ok: true as const, data: null };
+  });
+}
+
+const FoundS = z.object({ found: z.boolean(), context: z.string() });
+/** Finds text on the page, scrolls it into view and returns the text around it (what a person does with Ctrl+F). */
+export async function findText(b: LiveBrowser, text: string): Promise<AdapterResult<{ found: boolean; context: string }>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    const r = FoundS.safeParse(await run(b.id, `const loc = page.getByText(${JSON.stringify(text)}, { exact: false }).first();
+      if (!(await loc.count())) return { found: false, context: "" };
+      await loc.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+      const around = await loc.evaluate((e) => (e.closest("p,li,td,tr,section,article,div") || e).innerText.replace(/\\s+/g, " ").slice(0, 500)).catch(() => "");
+      return { found: true, context: around };`, 15));
+    return r.success ? { ok: true as const, data: r.data } : degrade("kernel: unreadable find result");
+  });
+}
+
+export async function selectOption(b: LiveBrowser, el: El, option: string): Promise<AdapterResult<null>> {
+  if (!isOn("kernel")) return degrade("kernel off");
+  return guard("kernel", async () => {
+    await run(b.id, `const l = page.locator('[data-sp-i="${Math.trunc(el.i)}"]').first(); await l.selectOption({ label: ${JSON.stringify(option)} }).catch(async () => { await l.selectOption(${JSON.stringify(option)}); });`, 12);
+    await settle(b);
+    return { ok: true as const, data: null };
+  });
+}
+
+/** Whether Kernel still has this browser. It deletes one after ten minutes without use, and its live view then only says "Session not found". Network trouble counts as alive: do not throw a browser away over a blip. */
+export async function vmAlive(b: LiveBrowser): Promise<boolean> {
+  if (!isOn("kernel")) return false;
+  try {
+    await client().browsers.retrieve(b.id);
+    return true;
+  } catch (e) {
+    const status = (e as { status?: number }).status;
+    return !(status === 404 || status === 410);
+  }
 }

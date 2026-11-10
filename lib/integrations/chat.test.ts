@@ -51,3 +51,25 @@ describe("provider allowlist", () => {
     for (const m of OPENROUTER_FREE_MODELS) expect(m.endsWith(":free") || m === "openrouter/free").toBe(true);
   });
 });
+
+describe("providers that name the thinking reasoning_content, and that report usage", () => {
+  const chunk = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  it("reads reasoning_content as reasoning (NVIDIA, Bluesminds)", () => {
+    const p = parseChatSse(chunk({ choices: [{ delta: { role: "assistant", reasoning_content: "Let me think" } }] }) + chunk({ choices: [{ delta: { content: "{\"action\":\"scroll\"}" } }] }));
+    expect(p.deltas).toEqual([{ reasoning: "Let me think" }, { content: '{"action":"scroll"}' }]);
+  });
+  it("still reads reasoning (OpenRouter, Groq), and prefers it when both are present", () => {
+    expect(parseChatSse(chunk({ choices: [{ delta: { reasoning: "a" } }] })).deltas).toEqual([{ reasoning: "a" }]);
+    expect(parseChatSse(chunk({ choices: [{ delta: { reasoning: "a", reasoning_content: "b" } }] })).deltas).toEqual([{ reasoning: "a" }]);
+  });
+  it("reads the exact token counts a provider sends in the last chunk", () => {
+    const p = parseChatSse(chunk({ choices: [], usage: { prompt_tokens: 55, completion_tokens: 400, total_tokens: 455 } }));
+    expect(p.deltas).toEqual([{ usage: { prompt: 55, completion: 400 } }]);
+  });
+  it("reads Groq's counts from x_groq", () => {
+    expect(parseChatSse(chunk({ choices: [{ delta: {}, finish_reason: "stop" }], x_groq: { usage: { prompt_tokens: 77, completion_tokens: 30 } } })).deltas).toEqual([{ usage: { prompt: 77, completion: 30 } }]);
+  });
+  it("a null usage on ordinary chunks adds nothing", () => {
+    expect(parseChatSse(chunk({ choices: [{ delta: { content: "hi" } }], usage: null })).deltas).toEqual([{ content: "hi" }]);
+  });
+});

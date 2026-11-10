@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { callModelHedged, defaultModelDeps, orderModels, type ModelDeps } from "./model";
-import { PICKABLE, describeChoice, modelDepsFor, parseChoice, preferFirst, roundsFor } from "./models";
+import { BROWSING_FIRST, PICKABLE, browsingDeps, describeChoice, modelDepsFor, parseChoice, preferFirst, roundsFor } from "./models";
 import { collect, scripted } from "./fakes";
 
 const base: ModelDeps = { ...defaultModelDeps, now: () => 1000 };
@@ -52,6 +52,46 @@ describe("modelDepsFor", () => {
     const d = modelDepsFor(base, { level: "high", pin: { provider: "groq", model: "evil/model" } });
     expect(ids(d)[0]).toBe("groq:openai/gpt-oss-120b");
     expect(ids(d)).not.toContain("groq:evil/model");
+  });
+});
+
+describe("browsingDeps (a browsing step is waited for)", () => {
+  it("every model it prefers is on the server roster", () => {
+    for (const id of BROWSING_FIRST) expect(defaultModelDeps.models.some((m) => m.model === id)).toBe(true);
+  });
+  it("puts the fast, reliable models first, in a fixed order, and keeps the whole roster", () => {
+    const d = browsingDeps(base);
+    expect(d.models.slice(0, 3).map((m) => m.model)).toEqual([...BROWSING_FIRST]);
+    expect(ids(d).sort()).toEqual(ids(base).sort());
+    expect(d.rotate).toBe(false);
+  });
+  it("keeps an order the person chose on purpose (a pinned model, High, Ultra)", () => {
+    const pinned = modelDepsFor(base, { level: "light", pin: { provider: "openrouter", model: "google/gemma-4-31b-it:free" } });
+    expect(browsingDeps(pinned)).toBe(pinned);
+    const ultra = modelDepsFor(base, { level: "ultra" });
+    expect(browsingDeps(ultra)).toBe(ultra);
+  });
+});
+
+describe("a reply the caller refuses", () => {
+  const two: ModelDeps = { open: undefined as never, now: () => 1, rotate: false, models: [{ provider: "groq", model: "openai/gpt-oss-120b" }, { provider: "groq", model: "openai/gpt-oss-20b" }] };
+  const isJson = (t: string) => t.trim().startsWith("{");
+  it("moves to the next model in the same call instead of failing", async () => {
+    const s = scripted(["I will just click it", '{"a":1}']);
+    const { ret } = await collect(callModelHedged("main", [{ role: "user", content: "x" }], { ...two, open: s.open }, { accept: isJson }));
+    expect(ret).toMatchObject({ ok: true, text: '{"a":1}' });
+    expect(s.calls()).toBe(2);
+  });
+  it("hands back the refused reply when every model gave one, so the caller can say what was wrong", async () => {
+    const s = scripted(["prose one", "prose two"]);
+    const { ret } = await collect(callModelHedged("main", [{ role: "user", content: "x" }], { ...two, open: s.open }, { accept: isJson }));
+    expect(ret).toMatchObject({ ok: false, rejected: "prose two" });
+  });
+  it("does not claim a refused reply when no model answered at all", async () => {
+    const open = (async () => ({ ok: false as const, degraded: true as const, reason: "http 500" })) as never;
+    const { ret } = await collect(callModelHedged("main", [{ role: "user", content: "x" }], { ...two, open }, { accept: isJson }));
+    expect(ret).toMatchObject({ ok: false });
+    expect(ret).not.toHaveProperty("rejected");
   });
 });
 
