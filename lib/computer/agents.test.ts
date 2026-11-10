@@ -149,7 +149,12 @@ describe("research agent", () => {
     const { ev, ret } = await collect(runResearchAgent(ctx("research-1", deps, session), "q"));
     expect(ret).toBe("A [2] and B [1].");
     expect(session.sources.map((s) => [s.n, s.host])).toEqual([[1, "old.example"], [2, "new.example"]]);
-    expect(ev.map((e) => e.kind)).toEqual(["step", "reasoning", "sources"]);
+    expect(ev.map((e) => e.kind)).toEqual(["step", "visit", "visit", "visit", "reasoning", "sources", "file", "file"]);
+    expect(ev.filter((e) => e.kind === "visit").map((e) => e.kind === "visit" && `${e.action}:${e.via}:${e.label}`)).toEqual(["search:tavily:q", "read:tavily:new.example", "read:tavily:old.example"]);
+    // the findings are written down as files the next step can read
+    expect(Object.keys(session.files)).toEqual(["artifacts/research-1-sources.csv", "artifacts/research-1-notes.md"]);
+    expect(session.files["artifacts/research-1-sources.csv"]).toContain("https://new.example/a");
+    expect(session.files["artifacts/research-1-notes.md"]).toContain("A [2] and B [1].");
   });
   it("returns a readable failure when the research run errors", async () => {
     const deps = mkDeps(scripted(["x"]).open, { research: async function* () { yield { kind: "error" as const, message: "No web results" }; } });

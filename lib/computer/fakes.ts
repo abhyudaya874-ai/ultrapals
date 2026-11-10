@@ -25,7 +25,7 @@ export function scripted(replies: (string | { reasoning: string; text: string })
 }
 
 export const VM: LiveBrowser = { id: "vm-1", liveViewUrl: "https://a.kernel.sh:8443/browser/live/T", offX: 0, offY: 87 };
-export const mkSession = (o: Partial<Session> = {}): Session => ({ id: "s1", vm: VM, vmOpening: null, sources: [], history: [], busy: false, lastUsed: 0, seq: 0, ...o });
+export const mkSession = (o: Partial<Session> = {}): Session => ({ id: "s1", vm: VM, vmOpening: null, sources: [], history: [], files: {}, browserReads: 0, busy: false, lastUsed: 0, seq: 0, ...o });
 
 export const page = (url: string, title: string, text = "text", elements: Snapshot["elements"] = []): Snapshot => ({ url, title, text, elements });
 export const ok = <T>(data: T) => ({ ok: true as const, data });
@@ -51,6 +51,7 @@ export function mkDeps(open: ReturnType<typeof scripted>["open"], patch: DepsPat
     research: async function* () { /* nothing */ },
     superKeys: () => ({}),
     probes: { stripe: never, square: never, paypal: never },
+    fetchPage: never,
   };
   return { ...base, ...patch, vm: { ...base.vm, ...patch.vm }, term: { ...base.term, ...patch.term }, model: { ...base.model, ...patch.model } } as unknown as Deps;
 }

@@ -12,7 +12,7 @@ describe("main agent", () => {
     const model = scripted(['{"thought":"enough","action":"answer","text":"The verdict is WAIT because the fact is missing."}']);
     const session = mkSession();
     const { ev } = await collect(runMain(session, { ...input, pageContext: "Latest stored verdict: FACT_MISSING (indeterminate) -> WAIT." }, mkDeps(model.open)));
-    expect(kinds(ev)).toEqual(["agent", "agent", "answer", "done"]);
+    expect(kinds(ev)).toEqual(["agent", "answer", "agent", "done"]); // the answer now streams as the model writes it, before the main row is marked done
     expect(ev.find((e) => e.kind === "answer")).toMatchObject({ delta: "The verdict is WAIT because the fact is missing." });
     expect(model.prompts[0]).toContain("FACT_MISSING");
     expect(session.history.map((h) => h.role)).toEqual(["user", "assistant"]);
@@ -107,5 +107,17 @@ describe("page context", () => {
     expect(await loadPageContext(`/p?id=${id}`, async () => facts)).toContain("Ship shoes");
     expect(await loadPageContext(`/p?id=${id}`, async () => { throw new Error("db down"); })).toBeNull();
     expect(await loadPageContext("/board", async () => facts)).toBeNull();
+  });
+});
+
+describe("main agent streams its answer", () => {
+  it("emits the answer in pieces as the JSON arrives, and never repeats the part already shown", async () => {
+    const chunks = ['{"thought":"x","action":"answer","text":"Hel', 'lo wor', 'ld."}'];
+    const body = new ReadableStream<Uint8Array>({ start(c) { for (const t of chunks) c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\n`)); c.enqueue(new TextEncoder().encode("data: [DONE]\n\n")); c.close(); } });
+    const open = (async (p: "groq", m: string) => ({ ok: true as const, data: { provider: p, model: m, body } })) as never;
+    const { ev } = await collect(runMain(mkSession(), { prompt: "hi", attachments: [], path: "/", pageContext: null }, mkDeps(open)));
+    const deltas = ev.flatMap((e) => (e.kind === "answer" ? [e.delta] : []));
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas.join("")).toBe("Hello world.");
   });
 });

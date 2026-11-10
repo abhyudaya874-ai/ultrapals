@@ -29,14 +29,21 @@ afterEach(() => vi.useRealTimers());
 describe("RivalPal", () => {
   it("researches, spawns cited rivals, attacks the real judge and emits a ladder the reducer keeps", async () => {
     const m = scripted(['{"queries":["logo designer scam stories"]}', rivals]);
-    const { ev, ret } = await collect(runRivalAgent({ agent: "rival-1", session: mkSession(), deps: mkDeps(m.open, { search: search(true) as never }) }, "Pay a designer $40 when the final logo is live"));
-    expect(ev.filter((e) => e.kind === "step" && e.agent === "rival-1").map((e) => e.kind === "step" && `${e.id}:${e.state}`)).toEqual(
+    const ctxSession = mkSession();
+    const { ev, ret } = await collect(runRivalAgent({ agent: "rival-1", session: ctxSession, deps: mkDeps(m.open, { search: search(true) as never }) }, "Pay a designer $40 when the final logo is live"));
+    expect(ev.filter((e) => e.kind === "step" && e.agent === "rival-1" && !e.id.startsWith("ask-")).map((e) => e.kind === "step" && `${e.id}:${e.state}`)).toEqual(
       ["plan:running", "plan:ok", "search:running", "search:ok", "rivals:running", "rivals:ok", "exam:running", "exam:ok"],
     );
+    // each model call is a visible step (so the UI never goes quiet), and every search and page read is listed
+    expect(ev.filter((e) => e.kind === "step" && e.id.startsWith("ask-")).map((e) => e.kind === "step" && e.state)).toEqual(["running", "ok", "running", "ok"]);
+    expect(ev.filter((e) => e.kind === "visit" && e.action === "search").length).toBeGreaterThan(0);
+    expect(ev.filter((e) => e.kind === "visit" && e.action === "read").map((e) => e.kind === "visit" && e.label)).toEqual(expect.arrayContaining(["forum.example.com", "blog.example.org"]));
     const ladder = ev.find((e) => e.kind === "ladder");
     expect(ladder?.kind === "ladder" && ladder.card).toMatchObject({ seal: { seal: "SEALED" }, rivals: [{ confidence: "medium" }] });
     expect(ret).toContain("Exam result: SEALED");
     const run = ev.reduce(applyCEvent, newRun("r", "x"));
+    expect(run.visits.length).toBeGreaterThan(2);
+    expect(Object.keys(ctxSession.files)).toEqual(expect.arrayContaining(["artifacts/rivals.csv", "artifacts/exam-ladder.csv"]));
     expect(run.exam?.seal.seal).toBe("SEALED");
   });
   it("says so plainly when search is down: no ladder, no claim the deal was examined", async () => {

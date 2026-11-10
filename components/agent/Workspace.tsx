@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDuration } from "@/components/thread/format";
 import { IconFile, IconGlobe, IconTerminal, IconX } from "@/components/ui/icons";
 import { liveViewSrc } from "@/lib/browse/live-view";
+import { parseCsv } from "@/lib/computer/artifacts";
+import { groupVisits } from "@/lib/computer/visits";
+import { SiteChip } from "@/components/ui/SiteChip";
 import { subagents, type AgentRow } from "@/lib/computer/run";
 import { useAgent, type WorkspaceTab } from "./AgentProvider";
 import { SourcePane } from "./SourcePane";
@@ -98,7 +101,19 @@ function FilesTab({ agents }: { agents: AgentRow[] }) {
             <span className="text-[12px] text-fg-dim">{f.created ? "created" : "edited"}</span>
             <span className="text-[12px]"><span className="text-ok">+{f.adds}</span> <span className="text-bad">-{f.removes}</span></span>
           </button>
-          {open === f.id && <pre className="max-h-80 overflow-auto border-t border-line p-3 font-mono text-[12px] leading-relaxed text-fg-muted">{f.preview}</pre>}
+          {open === f.id && (f.path.endsWith(".csv") ? (
+            <div className="max-h-80 overflow-auto border-t border-line p-2" data-testid="csv-preview">
+              <table className="w-full border-collapse text-[12px]">
+                <tbody>
+                  {parseCsv(f.preview, 30).map((r, i) => (
+                    <tr key={i} className={i === 0 ? "text-fg" : "text-fg-muted"}>
+                      {r.map((c, j) => <td key={j} className={`max-w-[16rem] truncate border border-line px-2 py-1 ${i === 0 ? "font-medium" : ""}`} title={c}>{c}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <pre className="max-h-80 overflow-auto border-t border-line p-3 font-mono text-[12px] leading-relaxed text-fg-muted">{f.preview}</pre>)}
         </li>
       ))}
     </ul>
@@ -138,6 +153,7 @@ export function Workspace() {
   const { workspace, closeWorkspace, openWorkspace, runs } = useAgent();
   const agents = useMemo(() => runs.flatMap(subagents), [runs]);
   const sources = useMemo(() => [...runs].reverse().find((r) => r.sources.length)?.sources ?? [], [runs]);
+  const visited = useMemo(() => groupVisits([...runs].reverse().find((r) => r.visits.length)?.visits ?? []), [runs]);
   const [active, setActive] = useState<number | null>(null);
   useEffect(() => {
     if (!workspace.open) return;
@@ -156,7 +172,7 @@ export function Workspace() {
             <Icon className="size-4" />{label}
           </button>
         ))}
-        {sources.length > 0 && <button type="button" onClick={() => openWorkspace("sources")} aria-pressed={tab === "sources"} className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] ${tab === "sources" ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>Sources {sources.length}</button>}
+        {(sources.length > 0 || visited.pages > 0) && <button type="button" onClick={() => openWorkspace("sources")} aria-pressed={tab === "sources"} className={`inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] ${tab === "sources" ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}>Sources {Math.max(sources.length, visited.pages)}</button>}
         {tab === "agent" && <span className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[13px] text-fg">Agent</span>}
         <button type="button" onClick={closeWorkspace} aria-label="Close workspace" title="Close workspace" className="ml-auto grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg">
           <IconX className="size-4" />
@@ -166,7 +182,23 @@ export function Workspace() {
         {tab === "browser" && <BrowserTab />}
         {tab === "terminal" && <TerminalTab agents={agents} />}
         {tab === "files" && <FilesTab agents={agents} />}
-        {tab === "sources" && <div className="h-full p-3"><SourcePane sources={sources} active={active} onPick={setActive} onClose={closeWorkspace} /></div>}
+        {tab === "sources" && (
+          <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3">
+            {sources.length > 0 && <div className="min-h-[16rem] flex-1"><SourcePane sources={sources} active={active} onPick={setActive} onClose={closeWorkspace} /></div>}
+            {visited.pages > 0 && (
+              <section className="space-y-2 rounded-card border border-line bg-surface p-3" data-testid="visited">
+                <h3 className="text-[13.5px] font-medium text-fg">{visited.searches.length} searches · {visited.pages} websites read</h3>
+                {visited.searches.map((s) => <p key={s.id} className="truncate text-[12.5px] text-fg-dim">🔍 {s.label}{s.count !== undefined ? ` · ${s.count} results` : ""}</p>)}
+                {visited.hosts.map((h) => (
+                  <div key={h.host} className="space-y-1">
+                    <p className="text-[12px] text-fg-dim">{h.host}</p>
+                    <div className="flex flex-wrap gap-1.5">{h.pages.map((p) => <SiteChip key={p.id} url={p.url!} title={p.title} />)}</div>
+                  </div>
+                ))}
+              </section>
+            )}
+          </div>
+        )}
         {tab === "agent" && <AgentTab agent={agents.find((a) => a.id === workspace.agentId)} result={runs.flatMap((r) => r.messages).filter((m) => m.from === workspace.agentId).at(-1)?.text} />}
       </div>
     </div>

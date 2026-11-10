@@ -18,7 +18,10 @@ const J = (s: string) => JSON.stringify(s);
  * have no type attribute, so buttons are matched by text/id, never type=submit or first().
  * Best-effort: PayPal's bot detection makes this flaky, so failure degrades to the manual approve URL.
  */
-export async function approveOrderOnBrowser(b: LiveBrowser, orderId: string): Promise<AdapterResult<{ finalUrl: string }>> {
+/** Buyer actions the scripted sandbox approval performs (email, password, pay). Counted from the script, not guessed. */
+export const BUYER_STEPS = 3;
+
+export async function approveOrderOnBrowser(b: LiveBrowser, orderId: string): Promise<AdapterResult<{ finalUrl: string; steps?: number }>> {
   if (!isOn("kernel")) return degrade("kernel off");
   const email = getEnv().PAYPAL_SANDBOX_BUYER_EMAIL;
   const password = getEnv().PAYPAL_SANDBOX_BUYER_PASSWORD;
@@ -57,6 +60,7 @@ export async function approveOrderOnBrowser(b: LiveBrowser, orderId: string): Pr
     const d = r.data as { finalUrl?: unknown; stuck?: unknown; dump?: unknown };
     const finalUrl = typeof d?.finalUrl === "string" ? d.finalUrl : "";
     if (typeof d?.stuck === "string") return degrade(`approval stuck: ${d.stuck.slice(0, 140)} :: ${JSON.stringify(d.dump ?? {}).slice(0, 600)}`);
-    return { ok: true as const, data: { finalUrl } };
+    // The script above performs exactly three buyer actions: enter the email, enter the password, press Pay. That is what friction measures.
+    return { ok: true as const, data: { finalUrl, steps: BUYER_STEPS } };
   });
 }

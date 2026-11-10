@@ -1,5 +1,6 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
+import { fetchPageText } from "@/lib/integrations/webpage";
 import { probePayPal, probeSquare, probeStripe } from "@/lib/integrations/rails";
 import { approveOrderOnBrowser } from "@/lib/integrations/paypal-approve";
 import { exaSearch } from "@/lib/integrations/exa";
@@ -37,6 +38,8 @@ export interface Deps {
   superKeys: () => Record<string, boolean>;
   orderStatus: (orderId: string) => Promise<AdapterResult<{ status: string }>>;
   /** Sandbox probes for SituationPal. PayPal's is read-only; Stripe and Square run against THEIR test environments only. */
+  /** Reads one public page as text (SSRF-guarded). The reader falls back to the live browser and then the terminal when this fails. */
+  fetchPage: typeof fetchPageText;
   probes: { stripe: typeof probeStripe; square: typeof probeSquare; paypal: typeof probePayPal };
 }
 
@@ -57,6 +60,7 @@ export const defaultDeps: Deps = {
       return {};
     }
   },
+  fetchPage: fetchPageText,
   probes: { stripe: probeStripe, square: probeSquare, paypal: probePayPal },
   orderStatus: async (orderId) => {
     const o = await paypal.getOrder(orderId, { signal: AbortSignal.timeout(8000) });
@@ -91,5 +95,13 @@ export async function* ensureVm(ctx: SubCtx): AsyncGenerator<CEvent, NonNullable
   }
   yield { kind: "step", agent, id, label: "Started a cloud computer", state: "ok", ms: Date.now() - t0 };
   yield { kind: "workspace", liveViewUrl: vm.liveViewUrl };
+  // Files written before the computer existed (the CSVs and notes of earlier research) are copied in, so TerminalPal can read them.
+  for (const [path, content] of Object.entries(session.files)) {
+    try {
+      await deps.term.write(vm.id, `/workspace/${path}`, content);
+    } catch {
+      /* the session copy is the source of truth */
+    }
+  }
   return vm;
 }

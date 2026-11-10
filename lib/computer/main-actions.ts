@@ -44,6 +44,7 @@ export const MAIN_SYSTEM =
   "- situation: SituationPal. Give it a business or product idea in plain words (e.g. 'a marketplace for AI-written reports with tiny payments'). It works out which payment needs the idea really has, researches PayPal and eight rival rails with Tavily and Exa in rounds until each need has a cited answer or the budget ends, runs real sandbox checks on Stripe, Square and PayPal, and returns a ranked, charted comparison. DEFAULT for 'which payment provider is best for my idea', 'compare PayPal with Stripe/Square for X' and 'what should I build on'. It never moves money.\n" +
   "Places in this app the browser agent can open at THIS APP's public URL: /newsroom (news stories; premium ones are $0.01 paywalled), /p?id=<promise id> (a promise's page), /board, /timeline. " + PREMIUM_LINE +
   "The Newsroom's premium articles unlock only through the promise agent.\n" +
+  "TOOL POLICY: start with research for facts; use the browser for a live page or form. If the browser cannot get a good answer (login wall, blocked, empty or script-rendered page), do NOT send it again: send the terminal to fetch the same source with curl (documentation sites often serve JSON or OpenAPI), parse it with node or python, and save a CSV. The terminal and the browser both see the files your team wrote in /workspace/artifacts, so build on them instead of searching again. Prefer a CSV for comparisons and a short markdown note for findings. " +
   "Subagents cannot see this conversation: write each task as a complete, self-contained instruction (include URLs, file names, ports, and what to report back). " +
   "Delegate one task at a time and read its result before deciding the next step. If a subagent says it ran out of steps or kept repeating, do NOT send the same task again: use what it reported, change the approach, or answer honestly with what is known. " +
   "If the user's request is about text they selected on screen or about the current page, use the PAGE CONTEXT and SELECTED TEXT first and answer directly when that is enough. " +
@@ -60,6 +61,7 @@ export function mainPrompt(o: {
   results: { agent: string; task: string; result: string }[];
   sources: { n: number; title: string; host: string }[];
   mustAnswer: boolean;
+  files?: string;
 }): string {
   const hist = o.history.slice(-6).map((h) => `${h.role.toUpperCase()}: ${h.content.slice(0, 600)}`).join("\n") || "(first message)";
   const sel = o.selections.length ? o.selections.map((s, i) => `(${i + 1}) ${s.slice(0, 1500)}`).join("\n") : "(none)";
@@ -67,6 +69,7 @@ export function mainPrompt(o: {
   const src = o.sources.slice(0, 12).map((s) => `[${s.n}] ${s.title.slice(0, 80)} (${s.host})`).join("\n") || "(none yet)";
   return (
     `CURRENT PAGE: ${o.path}\nTHIS APP'S PUBLIC URL (use it for links to our own pages): ${o.appUrl}\nPAGE CONTEXT:\n${o.pageContext ?? "(none)"}\n\nSELECTED TEXT the user added to this chat:\n${sel}\n\n` +
+    `WORKSPACE FILES your team has written so far (CSV and notes; read these before searching again):\n${o.files ?? "(no files yet)"}\n\n` +
     `CONVERSATION SO FAR:\n${hist}\n\nUSER REQUEST: ${o.prompt}\n\nWORK DONE FOR THIS REQUEST:\n${res}\n\nSOURCES:\n${src}\n\n` +
     (o.mustAnswer ? 'You have used your planning budget: reply now with {"action":"answer",...} using what you have.' : "What is your next action?")
   );

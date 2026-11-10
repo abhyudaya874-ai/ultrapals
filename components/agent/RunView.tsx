@@ -10,6 +10,9 @@ import { subagents, type AgentRow, type Run } from "@/lib/computer/run";
 import { AnswerText } from "./AnswerText";
 import { ExamPanel } from "./ExamPanel";
 import { SituationPanel } from "./SituationPanel";
+import { SearchedSites } from "./SearchedSites";
+import { SourceStack } from "@/components/ui/SiteChip";
+import { groupVisits } from "@/lib/computer/visits";
 import { useAgent } from "./AgentProvider";
 
 const DOT = { running: "bg-warn animate-pulse", ok: "bg-ok", error: "bg-bad" } as const;
@@ -33,6 +36,8 @@ export function RunView({ run }: { run: Run }) {
   const terms = subs.flatMap((a) => a.terms).length;
   const main = run.agents.find((a) => a.id === "main");
   const rows = disclosureRows(run);
+  const grouped = groupVisits(run.visits);
+  const pages = grouped.pages;
   const now = running ? [...subs].reverse().flatMap((a) => a.steps).find((st) => st.state === "running")?.label : undefined;
   const thinking = (main?.reasoning ?? "") + subs.map((a) => a.reasoning).join("");
 
@@ -50,9 +55,10 @@ export function RunView({ run }: { run: Run }) {
         {running && now && <span className="text-fg-dim"> · {now}</span>}
       </p>
 
-      {rows.length > 0 && (
+      {(rows.length > 0 || run.visits.length > 0) && (
         <Disclosure key={String(running)} testId="process" defaultOpen={running} label={processLabel(run)} meta={`${subs.length} agent${subs.length === 1 ? "" : "s"}${run.model ? ` · ${run.model}` : ""}`}>
           <ul className="ml-1 space-y-1 border-l border-line pl-3.5">
+            <SearchedSites visits={run.visits} running={running} />
             {run.timeline.map((t) => {
               if (t.t === "message") {
                 const m = run.messages.find((x) => x.id === t.id);
@@ -121,9 +127,14 @@ export function RunView({ run }: { run: Run }) {
         </div>
       )}
 
-      {(run.sources.length > 0 || liveViewUrl || terms > 0) && (
+      {(run.sources.length > 0 || pages > 0 || liveViewUrl || terms > 0) && (
         <div className="flex flex-wrap gap-2">
-          {run.sources.length > 0 && <button type="button" data-testid="sources-chip" onClick={() => openWorkspace("sources")} className={CHIP}>{run.sources.length} sources{run.used.length > 0 && ` · ${run.used.length} cited`}</button>}
+          {(run.sources.length > 0 || pages > 0) && (
+            <button type="button" data-testid="sources-chip" onClick={() => openWorkspace("sources")} className={CHIP}>
+              <SourceStack hosts={[...new Set([...run.sources.map((s) => s.host), ...grouped.hosts.map((h) => h.host)])]} />
+              {Math.max(pages, run.sources.length)} sources{run.used.length > 0 && ` · ${run.used.length} cited`}
+            </button>
+          )}
           {liveViewUrl && <button type="button" onClick={() => openWorkspace("browser")} className={CHIP}><IconGlobe className="size-4" />Browser</button>}
           {terms > 0 && <button type="button" onClick={() => openWorkspace("terminal")} className={CHIP}><IconTerminal className="size-4" />{terms} command{terms === 1 ? "" : "s"}</button>}
         </div>

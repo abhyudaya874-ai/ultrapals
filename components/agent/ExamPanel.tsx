@@ -1,6 +1,7 @@
 "use client";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { ExamChart } from "./ExamChart";
+import { SiteChip } from "@/components/ui/SiteChip";
 import type { RowStatus } from "@/lib/pals/ladder";
 import type { ExamCard } from "@/lib/pals/card";
 import type { Seal } from "@/lib/pals/seal";
@@ -47,9 +48,7 @@ export function ExamPanel({ card }: { card: ExamCard }) {
               <span className="min-w-0 flex-1 truncate text-fg-dim">{s.observed === null ? s.note ?? s.pal.edge : `${s.pal.metric.replace(/_/g, " ")}: ${s.observed} (bar ${s.pal.op} ${s.pal.value})`}</span>
               <span className={`shrink-0 ${ROW[s.status].tone}`}>{ROW[s.status].label}</span>
               {s.evidence && (
-                <a href={s.evidence.url} target="_blank" rel="noreferrer" title={s.evidence.quote} className="shrink-0 text-fg-dim hover:text-fg">
-                  {new URL(s.evidence.url).hostname.replace(/^www\./, "")}
-                </a>
+                <SiteChip url={s.evidence.url} title={s.evidence.quote} />
               )}
             </li>
           ))}
@@ -84,7 +83,7 @@ export function ExamPanel({ card }: { card: ExamCard }) {
               <ul className="mt-0.5 space-y-0.5">
                 {e.rival.sources.map((s) => (
                   <li key={s.url} className="truncate text-fg-dim">
-                    <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-fg">{new URL(s.url).hostname.replace(/^www\./, "")}</a> <span className="italic">“{s.quote}”</span>
+                    <SiteChip url={s.url} title={s.quote} /> <span className="italic">“{s.quote}”</span>
                   </li>
                 ))}
               </ul>

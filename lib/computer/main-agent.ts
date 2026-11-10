@@ -3,7 +3,9 @@ import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
-import { callModel } from "./model";
+import { answerTextSoFar } from "./json-text";
+import { workspaceDigest } from "./artifacts";
+import { callModel, type ModelResult } from "./model";
 import { PAL_NAMES } from "./pals";
 import { runPromiseAgent } from "./promise-agent";
 import { runResearchAgent } from "./research-agent";
@@ -40,10 +42,19 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       { role: "system" as const, content: MAIN_SYSTEM },
       {
         role: "user" as const,
-        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === MAX_ROUNDS }),
+        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === MAX_ROUNDS, files: workspaceDigest(session.files) }),
       },
     ];
-    const res = yield* callModel("main", messages, deps.model, { signal, round, maxTokens: 1400 });
+    // The final answer is streamed word by word as the model writes it (not dumped at the end); `streamed` is what the user already saw.
+    let streamed = "";
+    let res: ModelResult;
+    const g = callModel("main", messages, deps.model, { signal, round, maxTokens: 1400, streamAnswer: answerTextSoFar });
+    for (;;) {
+      const n = await g.next();
+      if (n.done) { res = n.value; break; }
+      if (n.value.kind === "answer") streamed += n.value.delta;
+      yield n.value;
+    }
     if (!res.ok) {
       yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "error", ms: Date.now() - t0 };
       yield { kind: "error", message: res.error };
@@ -65,7 +76,10 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       const used = usedSources(a.text, session.sources.length);
       session.history = pushHistory(pushHistory(session.history, { role: "user", content: input.prompt }), { role: "assistant", content: a.text });
       yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "ok", ms: Date.now() - t0 };
-      yield { kind: "answer", delta: a.text };
+      if (a.text.startsWith(streamed)) {
+        if (a.text.length > streamed.length) yield { kind: "answer", delta: a.text.slice(streamed.length) };
+      } else if (streamed === "") yield { kind: "answer", delta: a.text };
+      // else: the streamed prefix differs from the parsed text (an exotic escape); the user keeps what they saw rather than a duplicate
       yield { kind: "done", used, model: `${res.model} · ${res.provider}`, ms: Date.now() - t0 };
       return;
     }

@@ -2,6 +2,7 @@ import type { ExamCard } from "@/lib/pals/card";
 import type { SituationCard } from "@/lib/pals/situation";
 import type { Source } from "@/lib/research/sources";
 import type { AgentRole, Attachment, CEvent, RunState } from "./events";
+import { hostOfUrl, type Visit } from "./visits";
 
 export interface Step {
   id: string;
@@ -72,11 +73,13 @@ export interface Run {
   page?: { url: string; title: string };
   exam?: ExamCard;
   situation?: SituationCard;
+  /** Every search made and page read by any agent, in order. Perplexity-style "sites searched". */
+  visits: Visit[];
   spawns: SpawnNote[];
 }
 
 export const newRun = (id: string, prompt: string, attachments: Attachment[] = []): Run => ({
-  id, prompt, attachments, agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running", spawns: [],
+  id, prompt, attachments, agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running", visits: [], spawns: [],
 });
 
 const OUT_CAP = 20_000; // the UI keeps the tail of a terminal block; the model gets its own, smaller cap
@@ -117,6 +120,11 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       });
     case "file":
       return onAgent(r, e.agent, (a) => ({ ...a, files: upsert(a.files, { id: e.id, path: e.path, created: e.created, adds: e.adds, removes: e.removes, preview: e.preview }) }));
+    case "visit": {
+      const { kind: _k, ...v } = e;
+      // one entry per id; the same page (canonical URL) read by two agents is one visit
+      return { ...r, visits: upsert(r.visits, v).slice(-300) };
+    }
     case "ladder":
       return { ...r, exam: e.card };
     case "situation":
@@ -125,8 +133,11 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       return { ...r, sources: e.sources };
     case "workspace":
       return { ...r, liveViewUrl: e.liveViewUrl };
-    case "page":
-      return { ...r, page: { url: e.url, title: e.title } };
+    case "page": {
+      const host = hostOfUrl(e.url);
+      const seen = r.visits.some((v) => v.action === "read" && v.url === e.url);
+      return { ...r, page: { url: e.url, title: e.title }, visits: host && !seen && !/^https?:\/\/(localhost|127\.)/.test(e.url) ? [...r.visits, { id: `read:${e.url}`, agent: "browser", action: "read" as const, label: host, url: e.url, title: e.title, via: "browser" as const, state: "ok" as const }].slice(-300) : r.visits };
+    }
     case "answer":
       return { ...r, answer: r.answer + e.delta };
     case "done":

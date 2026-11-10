@@ -16,6 +16,9 @@ import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
 import { generateId } from "./ids";
 import { callModelHedged } from "./model";
+import { csvOf, writeArtifact } from "./artifacts";
+import { readPage } from "./reader";
+import { hostOfUrl, readVisit, searchVisit } from "./visits";
 
 const MAX_ROUNDS = 4;
 const MAX_SEARCHES = 40;
@@ -23,6 +26,7 @@ const PARALLEL = 4;
 const SEARCH_MS = 9_000;
 const WINDOW_MS = 270_000;
 const PROBED = ["stripe", "square", "paypal"] as const;
+const MAX_READS_PER_ROUND = 4;
 
 const ROOT: Caps = { spawn: SPAWNS.root, tools: ["tavily", "exa"], maxCalls: 0, maxMs: WINDOW_MS };
 const PAL: Caps = { spawn: SPAWNS.pal, tools: ["tavily", "exa", "fetch"], maxCalls: 0, maxMs: WINDOW_MS };
@@ -46,19 +50,24 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
   const families = [...new Set(deps.model.models.filter((m) => m.model !== "openrouter/free").map((m) => familyOf(m.model)))];
   const blindFamily = families.length >= 2 ? families[1] : null;
   const mainModels = { ...deps.model, models: blindFamily ? deps.model.models.filter((m) => familyOf(m.model) !== blindFamily) : deps.model.models };
-  const ask = async (messages: ChatMessage[], accept?: (t: string) => boolean, models = mainModels): Promise<{ text: string; family: string } | null> => {
-    const g = callModelHedged(agent, messages, models, { signal, round: modelRound++, maxTokens: 2400, accept });
-    for (;;) {
-      const n = await g.next();
-      if (n.done) return n.value.ok ? { text: n.value.text, family: familyOfBare(n.value.model, deps.model.models) } : null;
-    }
+  // Every model call is a visible step and streams the model's reasoning, so the thread never goes quiet while a model works.
+  const ask = async function* (what: string, messages: ChatMessage[], accept?: (t: string) => boolean, models = mainModels): AsyncGenerator<CEvent, { text: string; family: string } | null> {
+    const k = modelRound++;
+    const id = `ask-${k}`;
+    const t = now();
+    yield { kind: "step", agent, id, label: what, state: "running" };
+    const r = yield* callModelHedged(agent, messages, models, { signal, round: k, maxTokens: 2400, accept });
+    yield { kind: "step", agent, id, label: what, state: r.ok ? "ok" : "error", detail: r.ok ? `answered by ${r.model}` : r.error.slice(0, 100), ms: now() - t };
+    return r.ok ? { text: r.text, family: familyOfBare(r.model, deps.model.models) } : null;
   };
-  const askMain = async (messages: ChatMessage[], accept?: (t: string) => boolean): Promise<string | null> => (await ask(messages, accept))?.text ?? null;
+  const askMain = async function* (what: string, messages: ChatMessage[], accept?: (t: string) => boolean): AsyncGenerator<CEvent, string | null> {
+    return (yield* ask(what, messages, accept))?.text ?? null;
+  };
 
   // 1. intake: what does this idea need?
   yield { kind: "step", agent, id: "needs", label: "Working out what the idea needs from a payment rail", state: "running" };
   const tn = now();
-  const parsed = parseNeeds((await askMain(needsMessages(idea), (t) => parseNeeds(t).length > 0)) ?? "");
+  const parsed = parseNeeds((yield* askMain("Reading the idea", needsMessages(idea), (t) => parseNeeds(t).length > 0)) ?? "");
   const needs: Need[] = parsed.length ? parsed : DEFAULT_NEEDS;
   yield { kind: "step", agent, id: "needs", label: "Worked out what the idea needs from a payment rail", state: parsed.length ? "ok" : "error", detail: parsed.length ? needs.map((n) => `${n.need} ${n.weight}`).join(", ") : "no model could read it; using default needs", ms: now() - tn };
 
@@ -83,7 +92,7 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
     const scoutId = "superpal-scout";
     if (yield* spawnPal(scoutId, "ScoutPal", "scout", `Find payment providers beyond ${RAILS.map((r) => r.name).join(", ")} that suit: ${idea.slice(0, 160)}`, "the best rail may not be one of the nine we know; the web names the others")) {
       const ts = now();
-      const planned = parseScoutQueries((await askMain(scoutPlanMessages(idea), (t) => parseScoutQueries(t).length > 0)) ?? "");
+      const planned = parseScoutQueries((yield* askMain("Planning where to look for other providers", scoutPlanMessages(idea), (t) => parseScoutQueries(t).length > 0)) ?? "");
       const queries = (planned.length ? planned : scoutQueries(idea)).slice(0, 3);
       const found: { id: "tavily" | "exa"; data: import("@/lib/integrations/types").WebSource[] }[] = [];
       const scoutTask = (q: string, n: number) => async function* (): AsyncGenerator<CEvent, void> {
@@ -98,7 +107,11 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
         yield { kind: "step", agent: id, id: "search", label: `Searching ${s.label}: ${q.slice(0, 70)}`, state: "running" };
         try {
           const res = await s.run(q, signal ? AbortSignal.any([signal, AbortSignal.timeout(SEARCH_MS)]) : AbortSignal.timeout(SEARCH_MS));
-          if (res.ok) found.push({ id: s.id as "tavily" | "exa", data: res.data });
+          if (res.ok) {
+            found.push({ id: s.id as "tavily" | "exa", data: res.data });
+            yield searchVisit(id, `${id}:s`, q, s.id as "tavily" | "exa", "ok", res.data.length);
+            for (const w of res.data) yield readVisit(id, w.url, w.title, s.id as "tavily" | "exa");
+          }
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: res.ok ? "ok" : "error", detail: res.ok ? `${res.data.length} pages` : res.reason, ms: now() - tq };
         } catch (e) {
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "error", detail: e instanceof Error ? e.message : "failed", ms: now() - tq };
@@ -109,7 +122,7 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
       const pages = pagesFrom(found, now());
       let names = "";
       if (pages.length > 0) {
-        const out = await askMain(scoutMessages(idea, pages, defs), (t) => parseRails(t).length > 0);
+        const out = yield* askMain("Finding providers the pages name", scoutMessages(idea, pages, defs), (t) => parseRails(t).length > 0);
         const v = verifyRails(out ? parseRails(out) : [], pages, defs);
         for (const d of v.kept) { defs = [...defs, d]; discovered.push({ id: d.id, name: d.name, url: d.found!.url, quote: d.found!.quote }); }
         names = v.kept.map((d) => d.name).join(", ");
@@ -160,6 +173,8 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
   let rounds = 0;
   let stop: StopReason = searchers.length ? "max_rounds" : "no_search";
   const eliminated = new Set<string>();
+  const fullRead = new Set<string>(); // pages already read in full (never read twice)
+  const readFull = new Map<string, "fetch" | "browser" | "terminal">();
 
   for (let round = 1; searchers.length > 0; round++) {
     const scores = scoreRails(live, needs, cells);
@@ -203,6 +218,8 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
         if (res.ok) {
           const ps = pagesFrom([{ id: s.id as "tavily" | "exa", data: res.data }], now());
           fresh.set(job.def.id, [...(fresh.get(job.def.id) ?? []), ...ps]);
+          yield searchVisit(id, `${id}:s`, job.q, s.id as "tavily" | "exa", "ok", res.data.length);
+          for (const w of res.data) yield readVisit(id, w.url, w.title, s.id as "tavily" | "exa");
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "ok", detail: `${ps.length} pages`, ms: now() - ts };
         } else {
           yield { kind: "step", agent: id, id: "search", label: `Searched ${s.label}`, state: "error", detail: res.reason, ms: now() - ts };
@@ -220,10 +237,34 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
       pagesByRail.set(rail, [...have, ...ps.filter((p) => !urls.has(p.url))].slice(0, 6));
     }
 
+    // Read the most promising page of each rail still in the race IN FULL, so a cell is classified from the page and not from a snippet:
+    // a plain fetch first, then the live browser (the user watches it navigate), then curl in the terminal.
+    const rank = new Map(scoreRails(live, needs, cells).map((s, i) => [s.rail, i] as const));
+    const readJobs = field
+      .filter((d) => unknown.some((u) => u.rail === d.id))
+      .sort((x, y) => (rank.get(x.id) ?? 99) - (rank.get(y.id) ?? 99))
+      .flatMap((d) => (pagesByRail.get(d.id) ?? []).filter((p) => !fullRead.has(p.url)).slice(0, 1).map((p) => ({ d, p })))
+      .filter((j, i, all) => all.findIndex((x) => x.p.url === j.p.url) === i) // one URL is read once, however many rails list it
+      .slice(0, MAX_READS_PER_ROUND);
+    if (readJobs.length > 0) {
+      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: reading ${readJobs.length} page${readJobs.length === 1 ? "" : "s"} in full`, state: "running" };
+      const tread = now();
+      const readTask = (job: (typeof readJobs)[number]) => async function* (): AsyncGenerator<CEvent, void> {
+        fullRead.add(job.p.url);
+        const r = yield* readPage({ ...ctx, agent: palIds.get(job.d.id)! }, job.p.url, { allowBrowser: true });
+        if (!r) return;
+        for (const [rail, ps] of pagesByRail) pagesByRail.set(rail, ps.map((x) => (x.url === job.p.url ? { ...x, text: r.text.slice(0, 3500) } : x)));
+        readFull.set(job.p.url, r.via);
+        if (readFull.size <= 12) yield* writeArtifact(ctx, `pages/${job.d.id}-${readFull.size}.md`, `# ${job.d.name}\n\nSource: ${r.url} (read by ${r.via})\n\n${r.text.slice(0, 3500)}\n`);
+      };
+      yield* mergeStreams(readJobs.map(readTask), 3);
+      yield { kind: "step", agent, id: `read-${round}`, label: `Round ${round}: read ${readJobs.length} page${readJobs.length === 1 ? "" : "s"} in full`, state: "ok", detail: `${[...readFull.values()].filter((v) => v !== "fetch").length} needed the browser or terminal`, ms: now() - tread };
+    }
+
     let added = 0;
     if (fresh.size > 0) {
       const view = new Map([...fresh.keys()].map((r) => [r, pagesByRail.get(r) ?? []] as const));
-      const out = await askMain(classifierMessages(idea, needs, unknown.filter((u) => view.has(u.rail)), view, live), (t) => parseCells(t).length > 0);
+      const out = yield* askMain(`Round ${round}: reading what each rail supports`, classifierMessages(idea, needs, unknown.filter((u) => view.has(u.rail)), view, live), (t) => parseCells(t).length > 0);
       const v = verifyCells(out ? parseCells(out) : [], pagesByRail, needs.map((n) => n.need), live);
       const m = mergeCellsDetail(cells, v.kept);
       added = m.cells.length - cells.length;
@@ -233,6 +274,8 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
     } else {
       yield { kind: "step", agent, id: `round-${round}`, label: `Round ${round}: nothing came back`, state: "error", detail: "no pages", ms: now() - tr };
     }
+    yield* writeArtifact(ctx, "situation-cells.csv", csvOf(["rail", "need", "support", "url", "quote"], cells.map((c) => [live.find((d) => d.id === c.rail)?.name ?? c.rail, c.need, c.support, c.url, c.quote])));
+    yield* writeArtifact(ctx, "situation-sources.csv", csvOf(["rail", "url", "host", "found_by", "read_by", "characters"], [...pagesByRail].flatMap(([rail, ps]) => ps.map((p) => [rail, p.url, hostOfUrl(p.url), p.operator ?? "", readFull.get(p.url) ?? "snippet", p.text.length]))));
     if (added === 0 && round > 1) { stop = "no_progress"; break; }
     if (searches >= MAX_SEARCHES) { stop = "search_budget"; break; }
   }
@@ -249,7 +292,7 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
   let blind: BlindResult | null = null;
   const others = { ...deps.model, models: deps.model.models.filter((m) => blindFamily !== null && familyOf(m.model) === blindFamily) };
   if (others.models.length > 0) {
-    const r = await ask(blindMessages(core), (t) => parseBlind(t, core) !== null, others);
+    const r = yield* ask("Blind reader choosing from the grid", blindMessages(core), (t) => parseBlind(t, core) !== null, others);
     const b = r ? parseBlind(r.text, core) : null;
     if (r && b) blind = { family: r.family, pick: b.pick, concern: b.concern };
   }
@@ -268,6 +311,8 @@ export async function* runSituationAgent(ctx: SubCtx, idea: string): AsyncGenera
     yield { kind: "agent", id, role: "superpal", title: `${d.name} Pal`, state: "ok", parent: agent, ms: now() - t0 };
     if (!eliminated.has(d.id)) yield { kind: "message", id: `from-${id}`, from: id, to: agent, text: `fit ${Math.round(sc.fit * 100)}%–${Math.round(sc.upper * 100)}%, ${sc.parts.filter((p) => p.support !== "unknown").length}/${sc.parts.length} needs cited${mine.length ? `; sandbox ${mine.filter((p) => p.outcome === "pass").length}/${mine.length} checks pass` : ""}.` };
   }
+  yield* writeArtifact(ctx, "situation-probes.csv", csvOf(["rail", "check", "outcome", "detail"], probes.map((p) => [p.rail, p.check, p.outcome, p.detail])));
+  yield* writeArtifact(ctx, "situation-report.md", `# ${idea.slice(0, 100)}\n\n${summarizeSituation(card)}\n`);
   yield { kind: "situation", agent, card };
   return summarizeSituation(card);
 }

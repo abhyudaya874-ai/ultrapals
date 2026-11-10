@@ -126,4 +126,36 @@ describe("SituationPal as a Case Desk", () => {
     await collect(runSituationAgent(c, "a shop"));
     expect(got).toMatchObject({ promiseId: "p" });
   });
+  it("streams as it goes: every model call is a visible step and every search and page read is listed", async () => {
+    const { ev } = await collect(runSituationAgent(ctx(brain()), "a shop"));
+    const asks = ev.filter((e) => e.kind === "step" && e.id.startsWith("ask-"));
+    expect(asks.length).toBeGreaterThanOrEqual(6); // needs, scout plan, scout, classify, blind (each running + ok)
+    expect(ev.filter((e) => e.kind === "visit" && e.action === "search").length).toBeGreaterThan(3);
+    const run = ev.reduce(applyCEvent, newRun("r", "x"));
+    expect(run.visits.filter((v) => v.action === "read").length).toBeGreaterThan(0);
+  });
+  it("reads promising pages in full (fetch first) and writes the evidence down as CSV and markdown files", async () => {
+    const asked: string[] = [];
+    const FULL = `${TEXT} ${"Refunds are issued within thirty days of purchase. ".repeat(30)}`;
+    const c = ctx(brain(), { fetchPage: async (u: string) => (asked.push(u), ok({ text: FULL, status: 200, finalUrl: u })) });
+    const { ev } = await collect(runSituationAgent(c, "a shop"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.length).toBeLessThanOrEqual(4 * 4); // at most 4 full reads per round
+    const files = Object.keys(c.session.files);
+    expect(files).toEqual(expect.arrayContaining(["artifacts/situation-cells.csv", "artifacts/situation-sources.csv", "artifacts/situation-probes.csv", "artifacts/situation-report.md"]));
+    expect(files.some((f) => f.startsWith("artifacts/pages/"))).toBe(true);
+    expect(c.session.files["artifacts/situation-sources.csv"]).toContain(",fetch,");
+    expect(c.session.files["artifacts/situation-cells.csv"]).toContain("Stripe,refunds_and_disputes,yes");
+    expect(ev.filter((e) => e.kind === "file").length).toBeGreaterThan(3);
+    // a page is never read twice
+    expect(new Set(asked).size).toBe(asked.length);
+  });
+  it("when a plain fetch is blocked, the live browser reads it and the user can see it navigate (page event)", async () => {
+    const c = ctx(brain(), { fetchPage: async () => ({ ok: false as const, degraded: true as const, reason: "http 403" }), vm: { goto: async () => ok(null), snapshot: async () => ok({ url: PAGE.url, title: "Docs", text: TEXT.repeat(4), elements: [] }) } });
+    const { ev } = await collect(runSituationAgent(c, "a shop"));
+    expect(ev.some((e) => e.kind === "page" && e.url === PAGE.url)).toBe(true);
+    expect(c.session.browserReads).toBeGreaterThan(0);
+    expect(c.session.browserReads).toBeLessThanOrEqual(3);
+  });
 });
+

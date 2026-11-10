@@ -19,6 +19,10 @@ export interface Session {
   busy: boolean;
   lastUsed: number;
   seq: number; // agent id counter
+  /** Files the agents wrote this conversation (CSV, markdown). They are the shared notes later answers are built from. */
+  files: Record<string, string>;
+  /** Pages opened in the live browser by readers this conversation (it is slow and shared, so it is capped). */
+  browserReads: number;
   lastPromiseRun?: PromiseRunLog; // what PromisePal last really did; RivalPal measures the exam against it
 }
 
@@ -63,7 +67,7 @@ let reaper: ReturnType<typeof setInterval> | undefined;
 
 export function getSession(id: string | undefined, close: (vmId: string) => Promise<void>): Session {
   const found = id ? sessions.get(id) : undefined;
-  const s: Session = found ?? { id: crypto.randomUUID(), vm: null, vmOpening: null, sources: [], history: [], busy: false, lastUsed: Date.now(), seq: 0 };
+  const s: Session = found ?? { id: crypto.randomUUID(), vm: null, vmOpening: null, sources: [], history: [], files: {}, browserReads: 0, busy: false, lastUsed: Date.now(), seq: 0 };
   s.lastUsed = Date.now();
   sessions.set(s.id, s);
   reaper ??= Object.assign(

@@ -6,6 +6,7 @@ import { admitSpawn } from "@/lib/swarm/tree/policy";
 import { SPAWNS, jobKey, type Caps, type SpawnRequest, type TreeNode } from "@/lib/swarm/tree/types";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
+import { readVisit, searchVisit } from "./visits";
 
 const SEARCH_MS = 9_000;
 const PARALLEL = 4;
@@ -68,6 +69,8 @@ export async function* runSuperPals(ctx: SubCtx, rows: SuperPalRow[], now: () =>
       try {
         const r = await s.run(String(wReq.input.q), sig);
         if (r.ok) {
+          yield searchVisit(workerId, `${workerId}:s`, String(wReq.input.q), s.id as "tavily" | "exa", "ok", r.data.length);
+          for (const w of r.data) yield readVisit(workerId, w.url, w.title, s.id as "tavily" | "exa");
           const ev = pickEvidence(row.pal.company, pagesFrom([{ id: s.id as "tavily" | "exa", data: r.data }], now()));
           if (ev) {
             row2 = { ...row, evidence: ev };

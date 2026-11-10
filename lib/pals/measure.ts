@@ -10,6 +10,8 @@ export interface PromiseRunLog {
   orderStatusAfter: string | null; // read-back of the PayPal order AFTER settle (null = could not read)
   moneyOpsCarriedId: boolean; // every money step carried the promise id (the mandate ref)
   currency: string;
+  /** Buyer actions the approval took, when the scripted flow did it (a manual approval is not counted: unknown). */
+  buyerSteps?: number;
 }
 
 export interface RunMeasurements {
@@ -40,6 +42,10 @@ export function measureRun(log: PromiseRunLog | null): RunMeasurements {
     from.push("reversal_unverified");
   } else {
     notApplicable.reversal = log.state === "captured" ? "run captured; refund route not exercised" : `run ended ${log.state}; nothing to reverse`;
+  }
+  if (log.buyerSteps !== undefined && Number.isInteger(log.buyerSteps) && log.buyerSteps >= 0) {
+    values.buyer_steps = log.buyerSteps;
+    from.push("buyer_steps");
   }
   values.evidence_fields_missing = log.promiseId && log.state && log.orderStatusAfter !== undefined ? 0 : 1;
   from.push("evidence_fields_missing");

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Disclosure } from "@/components/ui/Disclosure";
+import { SiteChip } from "@/components/ui/SiteChip";
 import { CHECKS, CHECK_LABEL, type Outcome } from "@/lib/pals/probe";
 import { REASON_TEXT, judgeRecommendation, type Outcome as Verdict } from "@/lib/pals/recommend";
 import { needWords, type RailId, type SituationCard, type Support } from "@/lib/pals/situation";
@@ -140,7 +141,7 @@ export function SituationPanel({ card }: { card: SituationCard }) {
           {sources.map((s) => (
             <li key={`${s.rail}-${s.need}`} className="text-fg-dim">
               <span className="text-fg">{s.name}</span> · {s.need.replace(/_/g, " ")} · <span className={MARK[s.support].tone}>{MARK[s.support].word}</span>{" "}
-              <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-fg">{new URL(s.url).hostname.replace(/^www\./, "")}</a> <span className="italic">“{s.quote}”</span>
+              <SiteChip url={s.url} title={s.quote} via={s.operator} /> <span className="italic">“{s.quote}”</span>
             </li>
           ))}
           {sources.length === 0 && <li className="text-fg-dim">No page could be cited for any pair, so every fit above is a wide band.</li>}
@@ -150,7 +151,7 @@ export function SituationPanel({ card }: { card: SituationCard }) {
         <Disclosure label={`${card.discovered.length} rail${card.discovered.length === 1 ? "" : "s"} found beyond the usual nine`} testId="situation-discovered">
           <ul className="space-y-1 pb-2 pl-1 text-[12.5px] text-fg-dim">
             {card.discovered.map((d) => (
-              <li key={d.id}><span className="text-fg">{d.name}</span> · <a href={d.url} target="_blank" rel="noreferrer" className="hover:text-fg">{new URL(d.url).hostname.replace(/^www\./, "")}</a> <span className="italic">“{d.quote}”</span></li>
+              <li key={d.id}><span className="text-fg">{d.name}</span> · <SiteChip url={d.url} title={d.quote} /> <span className="italic">“{d.quote}”</span></li>
             ))}
           </ul>
         </Disclosure>

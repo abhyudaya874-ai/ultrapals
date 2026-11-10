@@ -235,3 +235,16 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
   re-checked at once; only a CONFIRMED change opens a case, subject to a daily case budget and quiet hours. A check that cannot run is `missed`, never "no change".
 - **Zero model calls.** `POST` requires `x-proctor-token` when `PROCTOR_TOKEN` is set and is rate-limited. Set the token before exposing the app.
 - **Known limit:** state is per server process (a restart makes a new baseline, never a false alarm). Durable state needs a schema change to a protected file.
+## 20. D-STREAM: stream per step, show sources, keep artifacts as context (authorized 2026-11-10)
+- **O27 — No silent waits.** The hang had three causes: `ask` in `rival-agent.ts` drained model events without emitting, the hedged call dropped the
+  leader's reasoning, and the final answer arrived as one delta. `lib/computer/pump.ts` forwards model events as steps, `callModelHedged` forwards
+  only the leader's reasoning, and `streamAnswer` + `answerTextSoFar` (`lib/computer/json-text.ts`) stream the answer text out of the partial JSON.
+- **Visits are events.** A `visit` CEvent (search query or page read) feeds `Run.visits`; the UI groups them per host (`visits.ts`) and shows chips.
+  No favicons or remote images (no external origins): letter tiles from `avatarOf`.
+- **Artifacts are RAG context.** Agents write `<agent>-sources.csv`, `<agent>-notes.md`, `rivals.csv`, `situation-*.csv` into the session files
+  (mirrored into the VM). `csvOf` neutralises leading `= + - @` (formula guard). `workspaceDigest` puts file names and heads into the main prompt.
+- **Reader chain.** `lib/computer/reader.ts`: plain fetch -> live browser (max 3 per conversation, serialized by a lock) -> terminal curl. Every hop
+  is SSRF-guarded (`lib/integrations/webpage.ts`). A page under 400 characters counts as unreadable and falls to the next step.
+- **Friction is measured.** A scripted PayPal approval counts `BUYER_STEPS = 3` (email, password, pay), logged as `buyer_steps`. The analyst bar is
+  <= 2, so friction reads BAR_MISSED after a real run. Latency (`human_steps_at_capture`) reads 0 and is met. Without a real PromisePal run in the
+  same chat the exam has nothing to measure, so it stays CONDITIONAL.

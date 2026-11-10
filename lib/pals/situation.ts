@@ -225,8 +225,12 @@ export function summarizeSituation(c: SituationCard): string {
 }
 
 /** Pure. Pages grouped by rail for the classifier prompt, each clipped so one round fits a free model's budget. */
-export function classifierMessages(idea: string, needs: readonly Need[], targets: readonly { rail: RailId; need: NeedId }[], pages: ReadonlyMap<RailId, readonly FetchedPage[]>, defs: readonly RailDef[] = RAILS, perPage = 380): { role: "system" | "user"; content: string }[] {
-  const block = [...pages.entries()].map(([rail, ps]) => `## ${railName(rail, defs)} (rail id: ${rail})\n${ps.map((p) => `- url: ${p.url}\n  text: ${p.text.slice(0, perPage).replace(/\s+/g, " ")}`).join("\n")}`).join("\n\n");
+export function classifierMessages(idea: string, needs: readonly Need[], targets: readonly { rail: RailId; need: NeedId }[], pages: ReadonlyMap<RailId, readonly FetchedPage[]>, defs: readonly RailDef[] = RAILS, perPage?: number): { role: "system" | "user"; content: string }[] {
+  // at most 3 pages per rail, and the per-page text shrinks as the number of pages grows, so one round always fits a free model's budget
+  const trimmed = [...pages.entries()].map(([rail, ps]) => [rail, ps.slice(0, 3)] as const);
+  const total = trimmed.reduce((n, [, ps]) => n + ps.length, 0);
+  const per = perPage ?? Math.max(250, Math.min(900, Math.floor(14_000 / Math.max(1, total))));
+  const block = trimmed.map(([rail, ps]) => `## ${railName(rail, defs)} (rail id: ${rail})\n${ps.map((p) => `- url: ${p.url}\n  text: ${p.text.slice(0, per).replace(/\s+/g, " ")}`).join("\n")}`).join("\n\n");
   return [
     {
       role: "system",

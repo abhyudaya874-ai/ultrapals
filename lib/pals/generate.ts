@@ -14,7 +14,16 @@ export interface GenDeps {
 }
 export const CACHE_TTL_MS = 10 * 60_000;
 
-export type GenStep = { id: string; label: string; state: "running" | "ok" | "error"; detail?: string; ms?: number };
+/** A search made or page read, described plainly so the UI can list "sites searched" (the agent layer turns these into visit events). */
+export interface GenVisit {
+  action: "search" | "read";
+  label: string;
+  url?: string;
+  title?: string;
+  via: "tavily" | "exa";
+  count?: number;
+}
+export type GenStep = { id: string; label: string; state: "running" | "ok" | "error"; detail?: string; ms?: number; visits?: GenVisit[] };
 export type Confidence = "high" | "medium" | "low";
 export interface RivalEntry {
   rival: Rival;
@@ -108,10 +117,10 @@ export async function* generateRivals(contract: string, deps: GenDeps, signal?: 
     out.queries = cached.queries;
     out.pages = cached.pages;
     yield { id: "plan", label: "Planned what could go wrong", state: "ok", detail: "reused from a recent run", ms: 0 };
-    yield { id: "search", label: "Searched real failure stories with Tavily and Exa", state: "ok", detail: `${out.pages.length} pages (cached)`, ms: 0 };
+    yield { id: "search", label: "Searched real failure stories with Tavily and Exa", state: "ok", detail: `${out.pages.length} pages (cached)`, ms: 0, visits: out.pages.map((p): GenVisit => ({ action: "read", label: p.url, url: p.url, via: p.operator ?? "tavily" })) };
   } else {
     const runSearch = async (qs: string[]) =>
-      (await Promise.all(qs.flatMap((q) => deps.search.map(async (s) => ({ id: s.id, r: await s.run(q, signal) }))))).flatMap(({ id, r }) => (r.ok ? [{ id, data: r.data }] : []));
+      (await Promise.all(qs.flatMap((q) => deps.search.map(async (s) => ({ id: s.id, q, r: await s.run(q, signal) }))))).flatMap(({ id, q, r }) => (r.ok ? [{ id, q, data: r.data }] : []));
 
     const tp = Date.now();
     yield { id: "plan", label: "Planning what could go wrong", state: "running" };
@@ -125,13 +134,18 @@ export async function* generateRivals(contract: string, deps: GenDeps, signal?: 
     yield { id: "search", label: "Searching real failure stories with Tavily and Exa", state: "running" };
     const defaults = new Set(fallbackQueries(contract));
     const [first, extra] = await Promise.all([early, runSearch(out.queries.filter((q) => !defaults.has(q)))]);
-    out.pages = pagesFrom([...first, ...extra], deps.now());
+    const answered = [...first, ...extra];
+    out.pages = pagesFrom(answered, deps.now());
     if (out.pages.length === 0) {
       yield { id: "search", label: "Searching real failure stories with Tavily and Exa", state: "error", detail: "no web results", ms: Date.now() - ts };
       return { ...out, error: "no web results, so no rival can be cited" };
     }
     deps.cache?.set(contract, { at: deps.now(), queries: out.queries, pages: out.pages });
-    yield { id: "search", label: "Searched real failure stories with Tavily and Exa", state: "ok", detail: `${out.pages.length} pages`, ms: Date.now() - ts };
+    const visits: GenVisit[] = [
+      ...answered.map((a): GenVisit => ({ action: "search", label: a.q, via: a.id, count: a.data.length })),
+      ...out.pages.map((p): GenVisit => ({ action: "read", label: p.url, url: p.url, via: p.operator ?? "tavily" })),
+    ];
+    yield { id: "search", label: "Searched real failure stories with Tavily and Exa", state: "ok", detail: `${out.pages.length} pages`, ms: Date.now() - ts, visits };
   }
 
   const tr = Date.now();

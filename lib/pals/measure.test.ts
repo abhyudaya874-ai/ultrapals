@@ -33,3 +33,16 @@ describe("measureRun", () => {
     expect(m.notApplicable.corridor).toBe("single-currency deal (USD)");
   });
 });
+
+describe("friction: buyer steps", () => {
+  const base = { promiseId: "p", approved: true, settled: true, state: "captured", orderStatusAfter: "COMPLETED", moneyOpsCarriedId: true, currency: "USD" };
+  it("is measured when the scripted approval counted its steps, and absent when a person approved by hand", () => {
+    expect(measureRun({ ...base, buyerSteps: 3 }).values.buyer_steps).toBe(3);
+    expect(measureRun({ ...base, buyerSteps: 3 }).from).toContain("buyer_steps");
+    expect(measureRun(base).values.buyer_steps).toBeUndefined();
+  });
+  it("a real run closes latency and measures friction: the axes the exam was holding live", () => {
+    const m = measureRun({ ...base, buyerSteps: 3 });
+    expect(m.values.human_steps_at_capture).toBe(0);
+  });
+});

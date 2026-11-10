@@ -24,6 +24,7 @@ export type CEvent =
   | { kind: "reasoning"; agent: string; delta: string }
   | { kind: "term"; agent: string; id: string; command: string; state: RunState; out?: string; exit?: number; ms?: number }
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string }
+  | { kind: "visit"; agent: string; id: string; action: "search" | "read"; label: string; url?: string; title?: string; via?: "tavily" | "exa" | "fetch" | "browser" | "terminal"; state: RunState; count?: number }
   | { kind: "ladder"; agent: string; card: ExamCard }
   | { kind: "situation"; agent: string; card: SituationCard }
   | { kind: "sources"; sources: Source[] }

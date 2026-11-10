@@ -177,7 +177,7 @@ export async function* runPromiseAgent(ctx: SubCtx, task: string): AsyncGenerato
   const read = await deps.orderStatus(orderId);
   const log: PromiseRunLog = {
     promiseId: pid, approved: true, settled: st.ok, state: state ?? "unknown",
-    orderStatusAfter: read.ok ? read.data.status : null, moneyOpsCarriedId: true, currency: article.currency,
+    orderStatusAfter: read.ok ? read.data.status : null, moneyOpsCarriedId: true, currency: article.currency, ...(ap.ok && typeof ap.data.steps === "number" ? { buyerSteps: ap.data.steps } : {}),
   };
   ctx.session.lastPromiseRun = log;
   yield step("Read the order back", read.ok ? "ok" : "error", read.ok ? read.data.status : read.reason, 0);

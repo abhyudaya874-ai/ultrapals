@@ -202,3 +202,12 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `lib/pals/family.ts`: `familyOf`, `familyOfBare`, `excludeFamilies`; `lib/pals/receipt.ts`: `cardHash`, `receiptId`, `canon`, `sha256` (server only)
 - `lib/proctor/core.ts`: `dueJobs`, `changed`, `allowEscalation`, `escalationStep`, `diffRows`, `fingerprint`; `run.ts`: `runDue(deps, schedules)`; `store.ts`: `proctorStore`
 - `app/api/proctor/route.ts`; `components/ProctorPanel.tsx` (on /board)
+
+## Streaming, visits, artifacts, reader (D-STREAM)
+- `lib/computer/pump.ts` `pump(...)`: forwards model events as steps while a call runs.
+- `lib/computer/json-text.ts` `answerTextSoFar(partial)`: the answer string so far from partial JSON.
+- `lib/computer/visits.ts` `hostOfUrl`, `avatarOf`, `searchVisit`, `readVisit`, `groupVisits`.
+- `lib/computer/artifacts.ts` `csvOf`, `parseCsv`, `artifactPath`, `putFile`, `writeArtifact`, `workspaceDigest`.
+- `lib/computer/reader.ts` `readPage`, `MAX_BROWSER_READS`, `MIN_CHARS` (fetch -> browser -> terminal). 5th file: guarded fetch is `lib/integrations/webpage.ts`.
+- `lib/integrations/webpage.ts` `fetchPageText` (SSRF-guarded per hop, capability `webfetch`); `lib/research/htmltext.ts` `htmlToText`.
+- `components/ui/SiteChip.tsx` `SiteAvatar`, `SiteChip`, `SourceStack`; `components/agent/SearchedSites.tsx`.

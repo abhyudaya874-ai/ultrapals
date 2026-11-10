@@ -57,7 +57,7 @@ export async function* callModel(
   agent: string,
   messages: ChatMessage[],
   deps: ModelDeps,
-  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number; accept?: (text: string) => boolean } = {},
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number; accept?: (text: string) => boolean; streamAnswer?: (accum: string) => string } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   let last = "no model available";
   for (const m of orderModels(deps.models, o.round ?? 0, deps.now())) {
@@ -72,6 +72,7 @@ export async function* callModel(
       continue;
     }
     let text = "";
+    let shown = "";
     let failed: string | null = null;
     try {
       for await (const d of readDeltas(opened.data.body)) {
@@ -80,6 +81,14 @@ export async function* callModel(
         if (d.content) {
           text += d.content;
           if (o.answerDeltas) yield { kind: "answer", delta: d.content };
+          else if (o.streamAnswer) {
+            // the answer is inside a JSON object: show its text as it is written, only ever by appending
+            const full = o.streamAnswer(text);
+            if (full.length > shown.length && full.startsWith(shown)) {
+              yield { kind: "answer", delta: full.slice(shown.length) };
+              shown = full;
+            }
+          }
         }
       }
     } catch (e) {
@@ -107,20 +116,31 @@ export async function* callModelHedged(
   agent: string,
   messages: ChatMessage[],
   deps: ModelDeps,
-  o: { signal?: AbortSignal; round?: number; maxTokens?: number; modelTimeoutMs?: number; accept?: (text: string) => boolean } = {},
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; modelTimeoutMs?: number; accept?: (text: string) => boolean; streamAnswer?: (accum: string) => string } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   const n = Math.max(1, Math.min(Math.floor(deps.hedge ?? 1), 3));
   if (n === 1) return yield* callModel(agent, messages, deps, o);
   const ctrls = Array.from({ length: n }, () => new AbortController());
+  // Reasoning of the racers cannot all be shown; the first one to start thinking is the one the UI follows.
+  const queue: CEvent[] = [];
+  let leader = -1;
+  let wake: (() => void) | null = null;
+  const ping = () => { const w = wake; wake = null; w?.(); };
   const runs = ctrls.map(async (c, i): Promise<ModelResult> => {
     const signal = o.signal ? AbortSignal.any([o.signal, c.signal]) : c.signal;
     const g = callModel(agent, messages, deps, { ...o, signal, round: (o.round ?? 0) + i });
     for (;;) {
       const x = await g.next();
       if (x.done) return x.value;
+      if (x.value.kind === "reasoning" && (leader === -1 || leader === i)) {
+        leader = i;
+        queue.push(x.value);
+        ping();
+      }
     }
   });
-  return new Promise<ModelResult>((resolve) => {
+  let finished = false;
+  const result = new Promise<ModelResult>((resolve) => {
     let pending = n;
     let err = "no model available";
     runs.forEach((p, i) =>
@@ -138,4 +158,11 @@ export async function* callModelHedged(
       ),
     );
   });
+  void result.then(() => { finished = true; ping(); });
+  for (;;) {
+    while (queue.length) yield queue.shift()!;
+    if (finished) break;
+    await new Promise<void>((r) => { wake = r; if (queue.length || finished) ping(); });
+  }
+  return result;
 }

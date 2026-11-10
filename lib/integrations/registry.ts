@@ -1,7 +1,7 @@
 import { getEnv, type Env } from "@/lib/env";
 import type { AdapterResult } from "./types";
 
-export const CAPABILITY_IDS = ["studio", "channel3", "kernel", "elastic", "bryntum", "astropods", "zapier", "render", "groq", "openrouter", "nvidia", "tokenrouter", "bluesminds", "tavily", "exa", "stripe", "square"] as const;
+export const CAPABILITY_IDS = ["studio", "channel3", "kernel", "elastic", "bryntum", "astropods", "zapier", "render", "groq", "openrouter", "nvidia", "tokenrouter", "bluesminds", "tavily", "exa", "stripe", "square", "webfetch"] as const;
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
 
 interface Capability {
@@ -24,6 +24,7 @@ const CAPABILITIES: Record<CapabilityId, Capability> = {
   tokenrouter: { on: (e) => e.CAP_TOKENROUTER && !!e.TOKENROUTER_API_KEY, note: "routed gateway models (grok-4.1-fast, deepseek); off = other providers" },
   bluesminds: { on: (e) => e.CAP_BLUESMINDS && !!e.BLUESMINDS_API_KEY, note: "credit-funded gateway models (nemotron lightning, kimi-k3); off = other providers" },
   tavily: { on: (e) => e.CAP_TAVILY && !!e.TAVILY_API_KEY, note: "web search with snippets; off = Exa only" },
+  webfetch: { on: () => true, note: "plain server-side page reads (SSRF-guarded); no key needed; failure falls back to the live browser, then the terminal" },
   stripe: { on: (e) => e.CAP_STRIPE && !!e.STRIPE_SANDBOX_KEY?.startsWith("sk_test_"), note: "Stripe TEST-mode probes for SituationPal; a live key is refused; off = rows are NOT_MEASURABLE" },
   square: { on: (e) => e.CAP_SQUARE && !!e.SQUARE_SANDBOX_KEY, note: "Square SANDBOX probes (host is hard-coded to the sandbox); off = rows are NOT_MEASURABLE" },
   exa: { on: (e) => e.CAP_EXA && !!e.EXA_API_KEY, note: "semantic web search with highlights; off = Tavily only" },
