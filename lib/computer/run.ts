@@ -31,6 +31,7 @@ export interface AgentRow {
   title: string;
   state: RunState;
   ms?: number;
+  parent?: string;
   steps: Step[];
   reasoning: string;
   terms: TermBlock[];
@@ -41,6 +42,13 @@ export interface Message {
   from: string;
   to: string;
   text: string;
+}
+export interface SpawnNote {
+  parent: string;
+  child: string;
+  why: string;
+  decision: "admitted" | "reused" | "denied";
+  detail?: string;
 }
 export type TimelineItem = { t: "agent"; id: string } | { t: "message"; id: string };
 
@@ -62,10 +70,11 @@ export interface Run {
   liveViewUrl?: string;
   page?: { url: string; title: string };
   exam?: ExamCard;
+  spawns: SpawnNote[];
 }
 
 export const newRun = (id: string, prompt: string, attachments: Attachment[] = []): Run => ({
-  id, prompt, attachments, agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running",
+  id, prompt, attachments, agents: [], messages: [], timeline: [], sources: [], answer: "", used: [], status: "running", spawns: [],
 });
 
 const OUT_CAP = 20_000; // the UI keeps the tail of a terminal block; the model gets its own, smaller cap
@@ -87,7 +96,9 @@ function onAgent(r: Run, id: string, f: (a: AgentRow) => AgentRow): Run {
 export function applyCEvent(r: Run, e: CEvent): Run {
   switch (e.kind) {
     case "agent":
-      return onAgent(r, e.id, (a) => ({ ...a, role: e.role, title: e.title, state: e.state, ms: e.ms ?? a.ms }));
+      return onAgent(r, e.id, (a) => ({ ...a, role: e.role, title: e.title, state: e.state, ms: e.ms ?? a.ms, parent: e.parent ?? a.parent }));
+    case "spawn":
+      return { ...r, spawns: [...r.spawns, { parent: e.parent, child: e.child, why: e.why, decision: e.decision, detail: e.detail }] };
     case "message": {
       const seen = r.messages.some((m) => m.id === e.id);
       return { ...r, messages: upsert(r.messages, { id: e.id, from: e.from, to: e.to, text: e.text }), timeline: seen ? r.timeline : [...r.timeline, { t: "message", id: e.id }] };

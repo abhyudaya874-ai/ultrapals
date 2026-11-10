@@ -7,6 +7,7 @@ import { generateRivals, type GenDeps } from "@/lib/pals/generate";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
 import { callModelHedged } from "./model";
+import { runSuperPals } from "./superpal-agent";
 
 const GEN_CACHE: NonNullable<GenDeps["cache"]> = new Map(); // same deal within 10 min: no second plan call, no second search
 
@@ -40,6 +41,13 @@ export async function* runRivalAgent(ctx: SubCtx, task: string): AsyncGenerator<
       const card = buildCard(task, res, exam, scoreSuperPals({ values: run.values, keysPresent: deps.superKeys() }), run.from);
       yield { kind: "step", agent, id: "exam", label: "Attacked the judge with the rivals' hostile worlds", state: "ok", detail: `${exam.attacks.run.length} attacks, ${exam.seal.seal}`, ms: Date.now() - t0 };
       yield { kind: "ladder", agent, card };
+      // Each SuperPal now sends its own ResearchPal to read what its rival publishes. The ladder is already on screen; this adds citations.
+      const withEvidence = yield* runSuperPals(ctx, card.superpals);
+      if (withEvidence.some((r) => r.evidence)) {
+        const final = { ...card, superpals: withEvidence };
+        yield { kind: "ladder", agent, card: final };
+        return summarizeCard(final);
+      }
       return summarizeCard(card);
     }
     yield { kind: "step", agent, ...n.value };

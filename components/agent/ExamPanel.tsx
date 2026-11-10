@@ -44,6 +44,11 @@ export function ExamPanel({ card }: { card: ExamCard }) {
               <span className="w-24 shrink-0 text-fg">{s.pal.name}</span>
               <span className="min-w-0 flex-1 truncate text-fg-dim">{s.observed === null ? s.note ?? s.pal.edge : `${s.pal.metric.replace(/_/g, " ")}: ${s.observed} (bar ${s.pal.op} ${s.pal.value})`}</span>
               <span className={`shrink-0 ${ROW[s.status].tone}`}>{ROW[s.status].label}</span>
+              {s.evidence && (
+                <a href={s.evidence.url} target="_blank" rel="noreferrer" title={s.evidence.quote} className="shrink-0 text-fg-dim hover:text-fg">
+                  {new URL(s.evidence.url).hostname.replace(/^www\./, "")}
+                </a>
+              )}
             </li>
           ))}
         </ul>

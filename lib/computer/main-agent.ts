@@ -21,7 +21,7 @@ export interface MainInput {
 }
 
 const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent, rival: runRivalAgent } as const;
-const TITLES: Record<Exclude<AgentRole, "main">, string> = { research: PAL_NAMES.research, browser: PAL_NAMES.browser, terminal: PAL_NAMES.terminal, promise: PAL_NAMES.promise, rival: PAL_NAMES.rival };
+const TITLES: Record<Exclude<AgentRole, "main" | "superpal">, string> = { research: PAL_NAMES.research, browser: PAL_NAMES.browser, terminal: PAL_NAMES.terminal, promise: PAL_NAMES.promise, rival: PAL_NAMES.rival };
 
 /**
  * The main agent: decides, delegates to subagents one at a time (they message it back), and writes the final answer.

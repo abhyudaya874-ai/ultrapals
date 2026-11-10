@@ -1,4 +1,5 @@
 import type { Metric, Provenance, RowStatus } from "./ladder";
+import type { Evidence } from "./evidence";
 import type { PayPalCap } from "./rival";
 
 /**
@@ -38,6 +39,8 @@ export interface SuperPalRow {
   observed: number | null;
   status: RowStatus;
   note?: string;
+  /** A cited line about this rival, found by its own ResearchPal. Context only: it never changes the status. */
+  evidence?: Evidence;
 }
 
 export interface SuperInputs {

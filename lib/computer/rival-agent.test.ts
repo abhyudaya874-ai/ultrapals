@@ -30,7 +30,7 @@ describe("RivalPal", () => {
   it("researches, spawns cited rivals, attacks the real judge and emits a ladder the reducer keeps", async () => {
     const m = scripted(['{"queries":["logo designer scam stories"]}', rivals]);
     const { ev, ret } = await collect(runRivalAgent({ agent: "rival-1", session: mkSession(), deps: mkDeps(m.open, { search: search(true) as never }) }, "Pay a designer $40 when the final logo is live"));
-    expect(ev.filter((e) => e.kind === "step").map((e) => e.kind === "step" && `${e.id}:${e.state}`)).toEqual(
+    expect(ev.filter((e) => e.kind === "step" && e.agent === "rival-1").map((e) => e.kind === "step" && `${e.id}:${e.state}`)).toEqual(
       ["plan:running", "plan:ok", "search:running", "search:ok", "rivals:running", "rivals:ok", "exam:running", "exam:ok"],
     );
     const ladder = ev.find((e) => e.kind === "ladder");

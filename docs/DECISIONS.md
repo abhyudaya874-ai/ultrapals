@@ -167,3 +167,32 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
 - **Known limit.** A text-only exam cannot observe most non-counterparty axes (identity, reversal need a real run), so those rows are
   NOT_MEASURABLE and a rival on a hard or unobservable axis REFUSES the deal. Measuring them from a real PromisePal run is the next step.
 - Each model gets its own 40s deadline in `callModel` (`MODEL_TIMEOUT_MS`): a live run once spent 144s on stalled models.
+
+## 15. D-SUPERPALS: rival examiners, seeded (authorized 2026-11-10)
+
+- **O21 — The SuperPals are a FROZEN seeded roster** (`lib/pals/superpals.ts`): StripePal, ShopifyPal, ApplePal, AdyenPal,
+  WisePal, KlarnaPal, X402Pal, SquarePal. Frozen so scores stay comparable across runs; the bars are analyst-set or measured,
+  never model-written. This realises D-RIVAL (O15-O17) with Pal naming: their sandbox keys arrive later, act only in competitor
+  TEST environments, never a real card, rows compare structure only.
+- **A SuperPal row is the competitive delta on the receipt; it NEVER gates the seal.** A missed delta is information for the
+  next build, not a refusal. Only the exam's own rows (lib/pals/ladder.ts ARCHETYPE_TABLE) feed decideSeal.
+- **A missing sandbox key is NOT_MEASURABLE with the env key named** (`STRIPE_SANDBOX_KEY not provided yet`) — never a pass,
+  never an invented score. X402Pal needs no key: its bar (no human at capture) is measured from the real run log.
+- **The run log (`lib/pals/measure.ts`).** PromisePal records what really happened (approved, settled, state, order read-back
+  after settle, money ops carried the promise id) and RivalPal measures the exam against it: consent is not capture
+  (human_steps_at_capture = 0), a release is only verified when the read-back shows no money moved, and identity is measured
+  from the mandate ref on every money op. Until a run exists those rows stay NOT_MEASURABLE.
+
+## 16. D-CHAIN: SuperPals spawn their own workers (authorized 2026-11-10)
+
+- **O22 — D-TREE is realised in `lib/swarm/tree/**` (pure: `types`, `policy`, `budget`, `merge`).** `admitSpawn` is the only place a spawn
+  is allowed or refused (reason, privilege, dedupe, repeat, depth, fan-out, nodes, loop caps, budget share, deadline). `attenuate` makes
+  a child's tools, spawn kinds and budget an intersection of its parent's. The tool enum has no PayPal, database or money member.
+- **The chain is main -> RivalPal -> SuperPal -> ResearchPal.** Each SuperPal sends one script-mode ResearchPal (one Tavily or Exa
+  search, 0 model calls). It returns a verbatim cited line (`lib/pals/evidence.ts`). Evidence is context: it never changes a row's
+  status and never gates the seal (D-SUPERPALS still binds). Sandbox keys, when they arrive, are a separate Fellow, not this worker.
+- **UI follows 9b of the swarm spec:** one status line, one collapsed Process row labelled from counts (`processLabel`), children
+  indented at most 2 levels under their parent (`disclosureRows`), declined spawns shown as muted rows, one read-only node panel.
+- **Speed:** `callModelHedged` races `hedge` models (default 2) and aborts the loser; an aborted loser is never put on cooldown.
+  `generateRivals` starts the default searches while the model plans and caches (queries, pages) per deal for 10 minutes.
+- Not built from the long spec, on purpose: charter canvas (D-BUILDER), Case Desk, Proctor, Presenter, live rival sandboxes.

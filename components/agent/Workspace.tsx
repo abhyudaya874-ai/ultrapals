@@ -105,12 +105,13 @@ function FilesTab({ agents }: { agents: AgentRow[] }) {
   );
 }
 
-function AgentTab({ agent }: { agent: AgentRow | undefined }) {
+function AgentTab({ agent, result }: { agent: AgentRow | undefined; result?: string }) {
   if (!agent) return <p className={EMPTY}>Pick an agent from the thread.</p>;
   return (
     <div className="h-full overflow-y-auto p-4">
       <h3 className="text-[15px] font-medium text-fg">{agent.title}</h3>
       <p className="text-[12px] text-fg-dim">{agent.id} · {agent.state}{agent.ms !== undefined ? ` · ${formatDuration(agent.ms)}` : ""}</p>
+      {result && <p className="mt-3 text-[13.5px] leading-relaxed text-fg" data-testid="agent-result">{result}</p>}
       <ul className="mt-3 space-y-1">
         {agent.steps.map((s) => (
           <li key={s.id} className="flex items-center gap-2.5 text-[13.5px]">
@@ -166,7 +167,7 @@ export function Workspace() {
         {tab === "terminal" && <TerminalTab agents={agents} />}
         {tab === "files" && <FilesTab agents={agents} />}
         {tab === "sources" && <div className="h-full p-3"><SourcePane sources={sources} active={active} onPick={setActive} onClose={closeWorkspace} /></div>}
-        {tab === "agent" && <AgentTab agent={agents.find((a) => a.id === workspace.agentId)} />}
+        {tab === "agent" && <AgentTab agent={agents.find((a) => a.id === workspace.agentId)} result={runs.flatMap((r) => r.messages).filter((m) => m.from === workspace.agentId).at(-1)?.text} />}
       </div>
     </div>
   );

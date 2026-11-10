@@ -173,3 +173,18 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 | `lib/computer/rival-agent.ts` | `runRivalAgent(ctx, task)` (RivalPal), emits `{kind:"ladder"}` |
 | `lib/computer/pals.ts` | `APP_NAME`, `PAL_NAMES`, `palName` |
 | `components/agent/ExamPanel.tsx` | `ExamPanel({ card })` |
+| `lib/pals/measure.ts` | `PromiseRunLog`, `measureRun(log)` -> `{ values, notApplicable, from }` |
+| `lib/pals/superpals.ts` | `SUPER_PALS` (frozen roster), `scoreSuperPals({ values, keysPresent })` |
+
+
+## lib/swarm/tree (D-CHAIN, pure)
+- `types.ts`: `Kind`, `Mode`, `Tool`, `Caps`, `SPAWNS`, `POLICY`, `SpawnRequest`, `TreeNode`, `TreeView`, `attenuate(parent, want)`, `jobKey(req)`
+- `policy.ts`: `admitSpawn(tree, parentId, req, nowMs) -> Decision`, `ancestors(tree, id)`
+- `budget.ts`: `BudgetNode` (`child`, `tryTake`, `release`, `left`, `spent`)
+- `merge.ts`: `mergeStreams(tasks, n)` streams events as they arrive, results in input order
+
+## lib/computer additions
+- `model.ts`: `callModelHedged(agent, messages, deps, o)`; `ModelDeps.hedge`
+- `process.ts`: `processLabel(run)`, `disclosureRows(run)`
+- `superpal-agent.ts`: `runSuperPals(ctx, rows, now?)` -> rows with `evidence`
+- `lib/pals/evidence.ts`: `pickEvidence(company, pages)`; `lib/pals/generate.ts`: `GenDeps.cache`, `CACHE_TTL_MS`

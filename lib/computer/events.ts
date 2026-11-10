@@ -1,7 +1,7 @@
 import type { ExamCard } from "@/lib/pals/card";
 import type { Source } from "@/lib/research/sources";
 
-export type AgentRole = "main" | "research" | "browser" | "terminal" | "promise" | "rival";
+export type AgentRole = "main" | "research" | "browser" | "terminal" | "promise" | "rival" | "superpal";
 export type RunState = "running" | "ok" | "error";
 
 /** Text the user selected on screen and added to the chat (Devin-style "Add to chat"). */
@@ -16,7 +16,8 @@ export interface Attachment {
  * the main agent is always "main". Append-only: a repeated id supersedes in place.
  */
 export type CEvent =
-  | { kind: "agent"; id: string; role: AgentRole; title: string; state: RunState; ms?: number }
+  | { kind: "agent"; id: string; role: AgentRole; title: string; state: RunState; ms?: number; parent?: string }
+  | { kind: "spawn"; parent: string; child: string; why: string; decision: "admitted" | "reused" | "denied"; detail?: string }
   | { kind: "message"; id: string; from: string; to: string; text: string }
   | { kind: "step"; agent: string; id: string; label: string; state: RunState; detail?: string; ms?: number }
   | { kind: "reasoning"; agent: string; delta: string }
