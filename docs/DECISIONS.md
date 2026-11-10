@@ -112,6 +112,11 @@ Standing Promise unlocks them. Consequences:
 - **O9 — Size cap waived for test tables only.** Money-path and agent code keep the 60-line slice cap.
 - Free models only on all four providers; allowlists are the enforcement. A paid or unknown model id is refused before any request.
 - The LLM layer produces typed DATA. It never builds a Verdict and never reaches PayPal.
+- **O18 — Owner-funded paid credits supersede "free-only" (authorized 2026-11-10).** TokenRouter
+  (api.tokenrouter.com/v1), NVIDIA NIM (integrate.api.nvidia.com/v1) and Bluesminds (api.bluesminds.com/v1) join the
+  provider layer behind `CAP_*` flags. The allowlist is still the only way a model id reaches the wire — the rule is now
+  "allowlisted-only", not "free-only". Rotation is a full-roster round-robin with per-provider cooldowns
+  (`lib/computer/model.ts`). Every new model id was confirmed in that gateway's live `/v1/models` before listing.
 
 ## 10. D-TREE: bounded recursive subagents (authorized 2026-11-09)
 
