@@ -12,5 +12,7 @@ export const AgentBody = z.object({
   attachments: z.array(z.object({ id: z.string().max(60), text: z.string().trim().min(1).max(4000), path: z.string().max(300) })).max(5).default([]),
   images: ImagesIn,
   model: z.unknown().optional(),
+  /** Minutes east of UTC where the user is (for "daily 09:00" in an automation UltraPal creates). */
+  tz: z.number().int().min(-840).max(840).optional(),
 });
 export type AgentBody = z.infer<typeof AgentBody>;

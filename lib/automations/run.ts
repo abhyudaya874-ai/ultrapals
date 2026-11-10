@@ -1,0 +1,84 @@
+import type { Deps } from "@/lib/computer/ctx";
+import { runMain } from "@/lib/computer/main-agent";
+import { modelDepsFor, roundsFor } from "@/lib/computer/models";
+import { applyCEvent, newRun, subagents, type Run } from "@/lib/computer/run";
+import type { Session } from "@/lib/computer/session";
+import { RUN_TIMEOUT_MS, type Automation, type RunSummary } from "./core";
+
+const MAX_FILES = 8;
+const MAX_FILE_CHARS = 20_000;
+const MAX_TOTAL_CHARS = 60_000;
+
+/** Delegates an unattended run may never use: PromisePal moves (sandbox) money and a person must approve that, and an automation must not create more automations. */
+export const DENIED_IN_AUTOMATIONS = ["promise", "automate"] as const;
+
+/** Pure. The prompt an automation runs with: it tells the agent nobody is watching, so it must deliver instead of asking. */
+export const framePrompt = (a: Pick<Automation, "name" | "prompt">, atMs: number): string =>
+  `[Unattended automation "${a.name}", started ${new Date(atMs).toISOString()}. Nobody is watching and nobody can answer questions: do the work, save any table as a CSV and any findings as a markdown note, and finish with a short report of what you found. Do not create automations.]\n\n${a.prompt}`;
+
+/**
+ * Pure. What is kept of a finished run: the answer, which agents worked, the files they made (capped), the sources. Files written to the
+ * session workspace win over the previews carried by file events; terminal-only files fall back to their preview.
+ */
+export function summarizeRun(o: { run: Run; files: Readonly<Record<string, string>>; id: string; atMs: number; ms: number }): RunSummary {
+  const { run } = o;
+  const fromSession = Object.entries(o.files).map(([p, content]) => ({ path: `/workspace/${p}`, content }));
+  const seen = new Set(fromSession.map((f) => f.path));
+  const fromEvents = run.agents.flatMap((a) => a.files).filter((f) => f.mode !== "read" && !seen.has(f.path)).map((f) => ({ path: f.path, content: f.preview }));
+  let budget = MAX_TOTAL_CHARS;
+  const files: RunSummary["files"] = [];
+  for (const f of [...fromSession, ...fromEvents]) {
+    if (files.length >= MAX_FILES || budget <= 0) break;
+    const content = f.content.slice(0, Math.min(MAX_FILE_CHARS, budget));
+    budget -= content.length;
+    files.push({ path: f.path, content });
+  }
+  const agents = [...new Set(subagents(run).map((a) => a.role))];
+  // A run that "finished" with no report (or just brackets) did not do its job; saying "ok" would hide that.
+  const empty = run.status === "done" && /^[\s{}[\]"',:]*$/.test(run.answer);
+  return {
+    id: o.id,
+    atMs: o.atMs,
+    ms: o.ms,
+    status: run.status === "done" && !empty ? "ok" : "error",
+    answer: run.answer.slice(0, 6000),
+    ...(run.status === "done" && !empty ? {} : { error: empty ? "the agent finished without writing a report" : (run.error ?? "the run did not finish").slice(0, 300) }),
+    agents,
+    files,
+    sources: run.sources.slice(0, 8).map((s) => ({ title: s.title.slice(0, 120), url: s.url })),
+    model: run.model,
+  };
+}
+
+export interface RunDeps {
+  deps: Deps;
+  now: () => number;
+  id: () => string;
+  /** A fresh conversation (its own cloud computer, if one is needed). */
+  open: () => Session;
+  /** Ends it and deletes the cloud computer, which bills while alive. */
+  close: (s: Session) => Promise<void>;
+}
+
+/** Runs one automation to the end as a headless UltraPal conversation. Never throws: a crash is a run with status "error". */
+export async function runAutomation(a: Automation, r: RunDeps, signal?: AbortSignal): Promise<RunSummary> {
+  const t0 = r.now();
+  const session = r.open();
+  session.busy = true;
+  let run = newRun(r.id(), a.prompt);
+  const timeout = AbortSignal.timeout(RUN_TIMEOUT_MS);
+  const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  try {
+    const choice = { level: a.level };
+    const deps: Deps = { ...r.deps, model: modelDepsFor(r.deps.model, choice) };
+    for await (const e of runMain(session, { prompt: framePrompt(a, t0), attachments: [], path: "/", pageContext: null, maxRounds: roundsFor(choice), deny: DENIED_IN_AUTOMATIONS }, deps, sig)) run = applyCEvent(run, e);
+    if (run.status === "running") run = applyCEvent(run, { kind: "error", message: timeout.aborted ? "stopped after the time limit" : "the run ended early" });
+  } catch (e) {
+    run = applyCEvent(run, { kind: "error", message: e instanceof Error ? e.message : "the run crashed" });
+  } finally {
+    session.busy = false;
+  }
+  const summary = summarizeRun({ run, files: session.files, id: run.id, atMs: t0, ms: r.now() - t0 });
+  await r.close(session).catch(() => undefined);
+  return summary;
+}

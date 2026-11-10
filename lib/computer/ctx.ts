@@ -1,6 +1,8 @@
 import { clickElement, gotoUrl, openBrowser, scrollPage, snapshotPage, typeInto } from "@/lib/integrations/kbrowser";
 import { execInVm, readFileInVm, serveInVm, writeFileInVm } from "@/lib/integrations/kterm";
 import { fetchPageText } from "@/lib/integrations/webpage";
+import { automationStore } from "@/lib/automations/store";
+import type { Spec } from "@/lib/automations/core";
 import { describeImages } from "@/lib/integrations/vision";
 import { ARTICLES } from "@/lib/newsroom";
 import { DEFAULT_SCHEDULES } from "@/lib/proctor/core";
@@ -49,6 +51,8 @@ export interface Deps {
   /** Reads the user's attached pictures with a vision model and returns plain text. The planner never receives pixels. */
   vision: typeof describeImages;
   /** Read-only data behind the app's own screens (newsroom, dashboard, timeline, proctor), for UltraPal's `open` action. */
+  /** Creates a recurring automation (UltraPal's `automate` action). Refuses past the limits. */
+  automations: { create: (spec: Spec, nowMs: number) => Promise<{ ok: true; id: string } | { ok: false; reason: string }> };
   appData: { articles: () => ArticleRow[]; verdicts: (limit: number) => Promise<VerdictLine[]>; proctor: () => ProctorSnap };
   probes: { stripe: typeof probeStripe; square: typeof probeSquare; paypal: typeof probePayPal };
 }
@@ -72,6 +76,12 @@ export const defaultDeps: Deps = {
   },
   fetchPage: fetchPageText,
   vision: describeImages,
+  automations: {
+    create: async (spec, nowMs) => {
+      const r = await automationStore().create(spec, nowMs);
+      return r.ok ? { ok: true, id: r.automation.id } : r;
+    },
+  },
   appData: {
     articles: () => ARTICLES.map((a) => ({ slug: a.slug, title: a.title, dek: a.dek, premium: a.premium, price: a.price, currency: a.currency, published: a.published })),
     verdicts: (limit) => queryVerdictRows(limit),

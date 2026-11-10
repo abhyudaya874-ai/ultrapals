@@ -8,3 +8,4 @@ node_modules
 .devin/hook-debug.log
 *.tsbuildinfo
 next-env.d.ts
+.data

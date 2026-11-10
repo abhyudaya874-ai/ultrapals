@@ -211,3 +211,11 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
 - `lib/computer/reader.ts` `readPage`, `MAX_BROWSER_READS`, `MIN_CHARS` (fetch -> browser -> terminal). 5th file: guarded fetch is `lib/integrations/webpage.ts`.
 - `lib/integrations/webpage.ts` `fetchPageText` (SSRF-guarded per hop, capability `webfetch`); `lib/research/htmltext.ts` `htmlToText`.
 - `components/ui/SiteChip.tsx` `SiteAvatar`, `SiteChip`, `SourceStack`; `components/agent/SearchedSites.tsx`.
+
+## Workspace UI, model choice, images, app artifacts (D-WORKSPACE)
+- `components/agent/`: `AgentHome` (main screen), `AgentPanel` (dock on other pages), `PromptBox` (input: images, selections, model pill), `ModelPill`, `ArtifactPanel` (tabs), `FileArtifact`, `FileChanges`, `DiffView`, `Markdown`, `AppArtifacts`, `ArtifactsGallery`.
+  Pure helpers with tests: `panel-model.ts` (tab ids, `collectFiles`, `withTab/withoutTab`), `markdown.ts`, `image-prep.ts`, `artifact-store.ts` (localStorage list, `byMonth`).
+- `lib/computer/diff.ts` `diffLines`, `readRows`; `models.ts` `LEVELS`, `modelDepsFor`, `roundsFor`, `parseChoice`; `images.ts` `ImageIn`, `sniffMime`; `request.ts` `AgentBody`; `app-data.ts` + `app-open.ts` (`open` action).
+- `lib/integrations/vision.ts` `describeImages`. `ModelDeps.rotate` keeps a chosen order fixed.
+- `lib/automations/`: `core` (schedule, limits, `nextRunAfter`, `canStart`, `asksForSchedule`, `parseSchedule`), `store` (file, atomic), `run` (`runAutomation`, `summarizeRun`), `tick` (`execute`, `tickDue`, `startNow`),
+  `scheduler` (timer + live deps), `public`, `presets`, `token`. Routes: `app/api/automations` (GET/POST/PATCH/DELETE), `/run`, `/tick`. UI: `components/automations/AutomationsView.tsx`, `app/automations`, `app/artifacts`, `app/new`.

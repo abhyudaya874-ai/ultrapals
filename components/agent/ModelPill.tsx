@@ -57,7 +57,7 @@ function LevelSlider({ level, onPick }: { level: Level; onPick: (l: Level) => vo
 }
 
 /** The Perplexity-style pill in the input box: effort slider with the model that leads at that level, or "Custom" to pin one model. */
-export function ModelPill({ value, onChange, disabled }: { value: ModelChoice; onChange: (c: ModelChoice) => void; disabled?: boolean }) {
+export function ModelPill({ value, onChange, disabled, allowCustom = true }: { value: ModelChoice; onChange: (c: ModelChoice) => void; disabled?: boolean; allowCustom?: boolean }) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -78,11 +78,11 @@ export function ModelPill({ value, onChange, disabled }: { value: ModelChoice; o
               <p className="px-1 pb-3 text-[13.5px] leading-snug text-fg-muted"><span className="font-medium text-fg">{d.title}</span> {d.blurb}</p>
               <LevelSlider level={value.level} onPick={(level) => onChange({ level })} />
               <div className="relative mt-2 h-4 text-[11.5px] text-fg-dim">{LEVELS.map((l, i) => <span key={l} className={`absolute top-0 -translate-x-1/2 ${l === value.level && !value.pin ? "text-fg" : ""}`} style={{ left: stopLeft(i, LEVELS.length) }}>{LEVEL_INFO[l].label}</span>)}</div>
-              <div className="mt-3 border-t border-line pt-1">
+              {allowCustom && <div className="mt-3 border-t border-line pt-1">
                 <button type="button" onClick={() => setCustom(true)} className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-[13.5px] text-fg-muted hover:text-fg">
                   <span>Custom{value.pin ? <span className="ml-2 text-fg-dim">{d.pill}</span> : null}</span><IconChevronRight className="size-4" />
                 </button>
-              </div>
+              </div>}
             </>
           ) : (
             <>

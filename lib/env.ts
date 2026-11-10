@@ -33,6 +33,8 @@ const Schema = z.object({
   CAP_BLUESMINDS: flag,
   CAP_TAVILY: flag,
   CAP_EXA: flag,
+  AUTOMATIONS_SCHEDULER: blank(z.enum(["on", "off"]).default("on")), // "off" = the in-process timer never starts (use POST /api/automations/tick instead)
+  AUTOMATIONS_TOKEN: opt(), // when set, POST /api/automations/tick requires it in x-automations-token
   PROCTOR_TOKEN: opt(), // when set, POST /api/proctor requires it in x-proctor-token
   CAP_STRIPE: flag,
   CAP_SQUARE: flag,

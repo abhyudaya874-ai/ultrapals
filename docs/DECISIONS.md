@@ -248,3 +248,19 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
 - **Friction is measured.** A scripted PayPal approval counts `BUYER_STEPS = 3` (email, password, pay), logged as `buyer_steps`. The analyst bar is
   <= 2, so friction reads BAR_MISSED after a real run. Latency (`human_steps_at_capture`) reads 0 and is met. Without a real PromisePal run in the
   same chat the exam has nothing to measure, so it stays CONDITIONAL.
+## 21. D-WORKSPACE: UltraPal is the main screen; screens became artifacts; automations are real (authorized 2026-11-10)
+- **O28 — `/` is UltraPal.** The promise form moved to `/new`. Dashboard, Timeline, Newsroom and Proctor are artifact tabs in the right panel (`components/agent/ArtifactPanel.tsx`),
+  opened from the panel's "+" menu, the Artifacts page, or by UltraPal's `open` action. `/board`, `/timeline`, `/newsroom` still exist as URLs (the browser agent and the paywall demo use them).
+  `open` writes the same data as CSV under `app/*.csv` in the session workspace (read-only; premium story bodies are never included) so the planner and TerminalPal can read it.
+- **O29 — One panel, one tab per artifact.** Tab ids are `browser|terminal|sources|file:<path>|app:<name>|agent:<id>`. A file the agent writes opens beside the chat the first time; later edits update its tab.
+  File events carry a line diff (`lib/computer/diff.ts`): added lines green, removed red, long unchanged runs folded; a read shows numbered lines with no red or green.
+- **O30 — The model pill is honest.** Light/Standard/High/Ultra change which allowlisted models go first, how many race (2 or 3) and how many planning rounds UltraPal gets (4/6/6/8);
+  "Custom" pins one roster model first with the rest as fallbacks. The roster is never filtered (SituationPal's blind check needs a second model family) and a pin that is not on the server roster is ignored.
+- **O31 — Pictures are read by a vision model, not by the planner.** The browser shrinks them (max 3, about 270 KB each); the server checks mime, base64 and magic bytes, and
+  `lib/integrations/vision.ts` asks `nemotron-3.5-super-vl:free` (then gemma-4) for a description that enters the prompt as data. Nothing is stored. If vision is off, the planner is told the picture could not be read.
+- **O32 — Automations run the whole team unattended, inside hard limits.** `lib/automations/**`: schedule (every N minutes >= 30, or daily/weekdays/weekends at a local time), at most 8 automations,
+  12 runs per automation per 24 h, one run at a time per process, 8 minute timeout. **PromisePal and `automate` are denied** inside a run: no sandbox money moves and no automation creates another without a person.
+  UltraPal's `automate` action works only when the user's own message has a scheduling word (`asksForSchedule`), so a web page cannot talk it into one. After downtime a run happens once, not once per missed interval.
+- **Persistence:** `.data/automations.json` (git-ignored), re-read on every operation and replaced atomically. A throwaway disk (free Render) loses it on redeploy; a table needs a migration of protected `db/schema.ts`, a separate decision.
+  Scheduler: an in-process 30 s timer started from `instrumentation.ts` (`AUTOMATIONS_SCHEDULER=off` disables it), plus `POST /api/automations/tick` (`x-automations-token` when `AUTOMATIONS_TOKEN` is set) for an external timer.
+- **Known limits:** the app has no login, so anyone who can reach it can create automations (bounded by the limits above); conversations are not saved across a page reload (only the files are, in localStorage).

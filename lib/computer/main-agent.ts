@@ -4,6 +4,7 @@ import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
+import { Spec, asksForSchedule, describeSchedule, parseSchedule } from "@/lib/automations/core";
 import { openAppArtifact } from "./app-open";
 import { IMAGE_INSTRUCTION } from "./images";
 import { answerTextSoFar } from "./json-text";
@@ -31,6 +32,8 @@ export interface MainInput {
   maxRounds?: number;
   /** Delegates this run may not use (an unattended automation never gets PromisePal: nobody is there to approve money). */
   deny?: readonly string[];
+  /** Minutes east of UTC where the user is, so "daily 09:00" means their 09:00. */
+  tzOffsetMin?: number;
 }
 
 const RUNNERS = { research: runResearchAgent, browser: runBrowserAgent, terminal: runTerminalAgent, promise: runPromiseAgent, rival: runRivalAgent, situation: runSituationAgent } as const;
@@ -123,6 +126,12 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       results.push({ agent: "app", task: `open ${a.artifact}`, result });
       continue;
     }
+    if (a.action === "automate") {
+      const sid = `automate-${++session.seq}`;
+      const result = yield* createAutomation(sid, a, input, deps);
+      results.push({ agent: "system", task: `automate "${a.name}"`, result });
+      continue;
+    }
     if (input.deny?.includes(a.agent)) {
       results.push({ agent: "system", task: `delegate to ${a.agent}`, result: `${a.agent} is not available in this run. Use another agent or answer with what you have.` });
       continue;
@@ -144,4 +153,24 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     yield { kind: "message", id: `from-${id}`, from: id, to: "main", text: result.slice(0, 1200) };
     results.push({ agent: a.agent, task: a.task, result });
   }
+}
+
+/** UltraPal's `automate` action: validated in code, gated on the user's own words, then created through the same store as the Automations page. */
+async function* createAutomation(id: string, a: { name: string; task: string; schedule: string }, input: MainInput, deps: Deps): AsyncGenerator<CEvent, string> {
+  const label = `Creating automation "${a.name}"`;
+  const refuse = function* (why: string, detail = why): Generator<CEvent, string> {
+    yield { kind: "step", agent: "main", id, label, state: "error", detail };
+    return why;
+  };
+  if (input.deny?.includes("automate")) return yield* refuse("Automations cannot be created from inside an automation.");
+  if (!asksForSchedule(input.prompt)) return yield* refuse("The user's message does not ask for anything to repeat, so no automation was created. Answer or delegate instead; do not try again.", "the message did not ask for a schedule");
+  const schedule = parseSchedule(a.schedule);
+  if (!schedule) return yield* refuse(`The schedule "${a.schedule}" could not be read. Use "every 6 hours", "every 90 minutes", "hourly", "daily 09:00" or "weekdays 08:30". The shortest interval is 30 minutes.`, "unreadable schedule");
+  const spec = Spec.safeParse({ name: a.name, prompt: a.task, schedule, tzOffsetMin: input.tzOffsetMin ?? 0, level: "standard" });
+  if (!spec.success) return yield* refuse(`The automation was not valid: ${spec.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}.`);
+  yield { kind: "step", agent: "main", id, label, state: "running" };
+  const r = await deps.automations.create(spec.data, deps.model.now());
+  if (!r.ok) return yield* refuse(`The automation could not be created: ${r.reason}.`, r.reason);
+  yield { kind: "step", agent: "main", id, label: `Created automation "${a.name}"`, state: "ok", detail: describeSchedule(schedule) };
+  return `Created the automation "${a.name}" (${describeSchedule(schedule)}). It runs unattended and its results appear on the Automations page. Tell the user how often it runs and that they can pause or delete it there.`;
 }

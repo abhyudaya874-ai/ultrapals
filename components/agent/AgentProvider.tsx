@@ -41,6 +41,8 @@ interface AgentCtx {
   closePanel: () => void;
   openApp: (name: string) => void;
   openLocalFile: (path: string, content: string) => void;
+  /** Remember files an automation made so the Artifacts page lists them. */
+  rememberFiles: (files: StoredFile[]) => void;
   /** Compatibility for the thread's chips. */
   openWorkspace: (tab: WorkspaceTab, agentId?: string) => void;
   closeWorkspace: () => void;
@@ -148,6 +150,15 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setPanel((p) => withTab(p, fileTab(path), true));
   }, []);
 
+  const rememberFiles = useCallback((files: StoredFile[]) => {
+    if (!files.length) return;
+    setStored((prev) => {
+      const next = mergeStored(prev, files);
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* quota */ }
+      return next;
+    });
+  }, []);
+
   const send = useCallback(async (message: string) => {
     const atts = attachments;
     const pics = images;
@@ -169,7 +180,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctl.signal,
-        body: JSON.stringify({ sessionId: sessionId ?? undefined, message: text, path, attachments: atts, images: pics.map(({ name, mime, data }) => ({ name, mime, data })), model }),
+        body: JSON.stringify({ sessionId: sessionId ?? undefined, message: text, path, attachments: atts, images: pics.map(({ name, mime, data }) => ({ name, mime, data })), model, tz: -new Date().getTimezoneOffset() }),
       });
     try {
       let res = await post(session.current);
@@ -245,7 +256,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AgentCtx>(
     () => ({
       open, busy, runs, attachments, images, model, notice, panel, localFiles, stored, liveViewUrl, page, focusTick,
-      toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile,
+      toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles,
       removeAttachment: (id) => setAttachments((a) => a.filter((x) => x.id !== id)),
       removeImage: (id) => setImages((a) => a.filter((x) => x.id !== id)),
       clearNotice: () => setNotice(null),
@@ -258,7 +269,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       },
       closeWorkspace: closePanel,
     }),
-    [open, busy, runs, attachments, images, model, notice, panel, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile],
+    [open, busy, runs, attachments, images, model, notice, panel, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

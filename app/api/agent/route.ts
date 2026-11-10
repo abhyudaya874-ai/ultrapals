@@ -40,7 +40,7 @@ export async function POST(req: Request): Promise<Response> {
         const pageContext = await loadPageContext(b.path);
         const choice = parseChoice(b.model);
         const deps = { ...defaultDeps, model: modelDepsFor(defaultDeps.model, choice) };
-        for await (const e of runMain(session, { prompt: b.message, attachments: b.attachments, path: b.path, pageContext, images: b.images, maxRounds: roundsFor(choice) }, deps, req.signal)) send(e);
+        for await (const e of runMain(session, { prompt: b.message, attachments: b.attachments, path: b.path, pageContext, images: b.images, maxRounds: roundsFor(choice), tzOffsetMin: b.tz }, deps, req.signal)) send(e);
       } catch (e) {
         send({ kind: "error", message: e instanceof Error ? e.message : "agent failed" });
       } finally {
