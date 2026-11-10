@@ -1,5 +1,6 @@
 "use client";
 import { Disclosure } from "@/components/ui/Disclosure";
+import { ExamChart } from "./ExamChart";
 import type { RowStatus } from "@/lib/pals/ladder";
 import type { ExamCard } from "@/lib/pals/card";
 import type { Seal } from "@/lib/pals/seal";
@@ -34,6 +35,7 @@ export function ExamPanel({ card }: { card: ExamCard }) {
           </li>
         ))}
       </ul>
+      <ExamChart card={card} />
       {card.seal.liveConditions.length > 0 && <p className="text-[12.5px] text-warn">Held live at runtime: {card.seal.liveConditions.join(", ")}</p>}
       {card.measuredFrom.length > 0 && <p className="text-[12.5px] text-fg-dim" data-testid="exam-measured">Measured from the real promise run: {card.measuredFrom.join(", ")}</p>}
 

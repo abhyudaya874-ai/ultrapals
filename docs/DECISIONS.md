@@ -196,3 +196,6 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
 - **Speed:** `callModelHedged` races `hedge` models (default 2) and aborts the loser; an aborted loser is never put on cooldown.
   `generateRivals` starts the default searches while the model plans and caches (queries, pages) per deal for 10 minutes.
 - Not built from the long spec, on purpose: charter canvas (D-BUILDER), Case Desk, Proctor, Presenter, live rival sandboxes.
+- **O23 — Exam scorecard chart (`lib/pals/chart.ts`, `components/agent/ExamChart.tsx`).** A chart spec holds a kind, a reason and row ids
+  only; every plotted number is looked up from the sealed card, so no value can be invented. A row that was not measured is drawn as a
+  dashed break, never a zero. Same rows give the same geometry. A model-chosen spec is not wired yet; the default spec is deterministic.
