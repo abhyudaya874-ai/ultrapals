@@ -13,7 +13,7 @@ describe("runExam", () => {
     const r = runExam([rival("evidence", "placeholder_asset"), rival("corridor", "currency_drift")]);
     expect(r.archetypes).toEqual(["counterparty", "evidence", "corridor"]);
     expect(r.rows[0]).toMatchObject({ archetype: "counterparty", status: "BAR_MET", observed: 0 });
-    expect(r.attacks.run.length).toBe(2);
+    expect(r.attacks.run.length).toBe(10);
   });
   it("axes nobody measured are NOT_MEASURABLE and ship as live conditions, not as passes", () => {
     const r = runExam([rival("evidence", "placeholder_asset"), rival("corridor", "currency_drift")]);
@@ -27,11 +27,12 @@ describe("runExam", () => {
   it("a hard axis that was never exercised refuses the deal", () => {
     expect(runExam([rival("reversal", "timeout")]).seal).toMatchObject({ seal: "REFUSED", reason: "hard axis open: reversal" });
   });
-  it("rivals whose attacks are guarded elsewhere leave counterparty NOT_MEASURABLE (no attack ran)", () => {
+  it("the judge faces all ten verdict-level attacks whatever the rivals chose, and two are reported as guarded elsewhere", () => {
     const r = runExam([rival("counterparty", "duplicate_callback")]);
-    expect(r.attacks.run).toEqual([]);
-    expect(r.rows[0].status).toBe("NOT_MEASURABLE");
-    expect(r.seal.seal).toBe("REFUSED");
+    expect(r.attacks.run.length).toBe(10);
+    expect(r.attacks.skipped.map((s) => s.mutation).sort()).toEqual(["duplicate_callback", "payee_swap"]);
+    expect(r.rows[0]).toMatchObject({ status: "BAR_MET", observed: 0 });
+    expect(r.seal.seal).toBe("SEALED");
   });
   it("a caller cannot smuggle in attacks_missed: it is recomputed from the real run", () => {
     const r = runExam([rival("evidence", "timeout")], { values: { attacks_missed: 99 } });

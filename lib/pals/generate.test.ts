@@ -81,6 +81,14 @@ describe("generateRivals", () => {
     expect(out.rejected).toHaveLength(1);
     expect(d.asked.at(-1)).toContain("quote is not in the fetched text");
   });
+  it("repairs when only one rival survived and others were rejected, merging without duplicates", async () => {
+    const two = JSON.stringify({ rivals: [JSON.parse(good).rivals[0], { ...JSON.parse(good).rivals[0], archetype: "evidence", failureClass: "invented", sources: [{ url: A.url, operator: "tavily", fetchedAtMs: NOW, quote: "words nobody wrote anywhere" }] }] });
+    const d = mk(["{}", two, good]);
+    const { out } = await drain(generateRivals("deal", d));
+    expect(out.entries).toHaveLength(1);
+    expect(out.rejected).toHaveLength(1);
+    expect(d.asked.at(-1)).toContain("quote is not in the fetched text");
+  });
   it("gives up honestly when nothing survives, and never invents a rival", async () => {
     const { out } = await drain(generateRivals("deal", mk(["{}", rivalJson("totally made up words here")])));
     expect(out.entries).toEqual([]);

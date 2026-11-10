@@ -1,6 +1,6 @@
 import { runAttacks, type AttackReport } from "./attacks";
 import { scoreLadder, type LadderRow, type Metric } from "./ladder";
-import { ARCHETYPES, type Archetype, type Rival } from "./rival";
+import { ARCHETYPES, MUTATIONS, type Archetype, type Rival } from "./rival";
 import { decideSeal, type SealDecision } from "./seal";
 
 /** What the caller really observed about the deal. Anything it leaves out is NOT_MEASURABLE, never assumed. */
@@ -18,12 +18,12 @@ export interface ExamResult {
 }
 
 /**
- * Pure. Every rival's attack is run against the real judge; the counterparty axis is ALWAYS examined (the judge itself is the
- * first thing a rival tests), the other axes only where a cited rival owns them. Excluded axes print with a reason.
+ * Pure. The judge ALWAYS faces the full hostile battery (its robustness does not depend on which rivals the search found), so the
+ * counterparty axis is always examined; the other axes only where a cited rival owns them. Excluded axes print with a reason.
  */
 export function runExam(rivals: Rival[], observed: Observed = {}): ExamResult {
   const archetypes = [...new Set<Archetype>(["counterparty", ...rivals.map((r) => r.archetype)])];
-  const attacks = runAttacks(rivals.map((r) => r.attack));
+  const attacks = runAttacks(MUTATIONS);
   const values = { ...observed.values };
   if (attacks.run.length > 0) values.attacks_missed = attacks.run.filter((a) => !a.survived).length;
   else delete values.attacks_missed;

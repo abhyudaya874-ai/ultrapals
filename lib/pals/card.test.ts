@@ -26,7 +26,7 @@ describe("exam card", () => {
     expect(t).toContain("Exam result: CONDITIONAL");
     expect(t).toContain("- counterparty: BAR_MET (observed 0, bar <= 0, measured)");
     expect(t).toContain("- evidence: NOT_MEASURABLE");
-    expect(t).toContain("Attacks on the judge: 1/1 survived; 0 guarded elsewhere.");
+    expect(t).toContain("Attacks on the judge: 10/10 survived; 2 guarded elsewhere.");
     expect(t).toContain("Rival (evidence, low confidence): placeholder swap per Acme; counter Disputes. Sources: https://a.example.com/x");
     expect(t).toContain("Live conditions the program must hold at runtime: evidence.");
   });
