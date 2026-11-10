@@ -4,6 +4,7 @@ import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
+import { openAppArtifact } from "./app-open";
 import { IMAGE_INSTRUCTION } from "./images";
 import { answerTextSoFar } from "./json-text";
 import { workspaceDigest } from "./artifacts";
@@ -44,6 +45,7 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
   const results: { agent: string; task: string; result: string }[] = [];
   yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "running" };
   let invalid = 0;
+  const opened = new Set<string>();
   const rounds = Math.max(2, Math.min(input.maxRounds ?? MAX_ROUNDS, MAX_ROUNDS_CAP));
 
   // Pictures: the planner is text-only, so a vision model reads them first and its description becomes data in the prompt.
@@ -111,6 +113,16 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       return;
     }
 
+    if (a.action === "open") {
+      if (opened.has(a.artifact)) {
+        results.push({ agent: "system", task: `open ${a.artifact}`, result: `The ${a.artifact} artifact is already open; its files are in the workspace.` });
+        continue;
+      }
+      opened.add(a.artifact);
+      const result = yield* openAppArtifact({ agent: "main", session, deps, signal }, a.artifact);
+      results.push({ agent: "app", task: `open ${a.artifact}`, result });
+      continue;
+    }
     if (input.deny?.includes(a.agent)) {
       results.push({ agent: "system", task: `delegate to ${a.agent}`, result: `${a.agent} is not available in this run. Use another agent or answer with what you have.` });
       continue;

@@ -15,6 +15,9 @@ export const PAL_NAMES: Record<AgentRole, string> = {
   sandbox: "SandboxPal",
 };
 
+/** Display names of the app screens UltraPal can open as artifacts. */
+export const APP_TITLES = { newsroom: "Newsroom", dashboard: "Dashboard", timeline: "Timeline", proctor: "Proctor" } as const;
+
 const RAIL_PAL: Record<string, string> = { paypal: "PayPalPal", x402: "X402Pal", apple: "ApplePal" };
 const railPal = (slug: string): string => RAIL_PAL[slug] ?? `${slug.replace(/^./, (c) => c.toUpperCase())}Pal`;
 const isRole = (s: string): s is AgentRole => s in PAL_NAMES;

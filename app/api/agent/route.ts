@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { defaultDeps } from "@/lib/computer/ctx";
 import { loadPageContext } from "@/lib/computer/context";
+import { AgentBody, MAX_BODY_BYTES } from "@/lib/computer/request";
+import { modelDepsFor, parseChoice, roundsFor } from "@/lib/computer/models";
 import { runMain } from "@/lib/computer/main-agent";
 import { endSession, getSession, hasSession } from "@/lib/computer/session";
 import { closeBrowser } from "@/lib/integrations/kbrowser";
@@ -10,12 +12,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 600; // paywall unlocks run create -> live approval -> settle -> browser read; 300s was not enough
 
-const Body = z.object({
-  sessionId: z.string().uuid().optional(),
-  message: z.string().trim().min(2).max(2000),
-  path: z.string().max(300).default("/"),
-  attachments: z.array(z.object({ id: z.string().max(60), text: z.string().trim().min(1).max(4000), path: z.string().max(300) })).max(5).default([]),
-});
 
 const ipOf = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 
@@ -25,7 +21,8 @@ const ipOf = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]
  * The session id comes back in `x-session-id`; send it with the next message to continue in the same VM.
  */
 export async function POST(req: Request): Promise<Response> {
-  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return Response.json({ error: "request too large: attach fewer or smaller images" }, { status: 413 });
+  const parsed = AgentBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }, { status: 400 });
   if (!allow(`agent:${ipOf(req)}`, Date.now(), 6)) return Response.json({ error: "slow down: 6 messages per minute" }, { status: 429, headers: { "Retry-After": "30" } });
 
@@ -41,7 +38,9 @@ export async function POST(req: Request): Promise<Response> {
       const send = (e: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
       try {
         const pageContext = await loadPageContext(b.path);
-        for await (const e of runMain(session, { prompt: b.message, attachments: b.attachments, path: b.path, pageContext }, defaultDeps, req.signal)) send(e);
+        const choice = parseChoice(b.model);
+        const deps = { ...defaultDeps, model: modelDepsFor(defaultDeps.model, choice) };
+        for await (const e of runMain(session, { prompt: b.message, attachments: b.attachments, path: b.path, pageContext, images: b.images, maxRounds: roundsFor(choice) }, deps, req.signal)) send(e);
       } catch (e) {
         send({ kind: "error", message: e instanceof Error ? e.message : "agent failed" });
       } finally {

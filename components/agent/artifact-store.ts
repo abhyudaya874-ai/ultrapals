@@ -38,3 +38,15 @@ export function mergeStored(prev: readonly StoredFile[], add: readonly StoredFil
   while (size > MAX_STORED_BYTES && all.length > 1) size -= all.pop()!.content.length;
   return all;
 }
+
+/** Pure. Groups newest-first files under "November 2026" style headings, in order. */
+export function byMonth(files: readonly StoredFile[]): { month: string; files: StoredFile[] }[] {
+  const out: { month: string; files: StoredFile[] }[] = [];
+  for (const f of files) {
+    const month = new Date(f.at).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+    const last = out.at(-1);
+    if (last?.month === month) last.files.push(f);
+    else out.push({ month, files: [f] });
+  }
+  return out;
+}
