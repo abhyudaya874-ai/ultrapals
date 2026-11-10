@@ -68,6 +68,13 @@ describe("callModel", () => {
     now += 600_000;
     expect(orderModels(M, 0, now).map((m) => m.model)).toContain("g/a");
   });
+  it("hands each model its own deadline so a stalled one cannot eat the whole budget", async () => {
+    const seen: AbortSignal[] = [];
+    const open = async (p: "groq", m: string, _msgs: unknown, opts: { signal?: AbortSignal }) => { if (opts.signal) seen.push(opts.signal); return m === "g/a" ? bad("groq: The operation was aborted due to timeout") : ok(p, m, sse({ content: "ok" })); };
+    expect((await drain(callModel("x", [], deps(open), { modelTimeoutMs: 5 }))).ret).toMatchObject({ ok: true, model: "b" });
+    expect(seen.length).toBe(2);
+    expect(seen[0]).not.toBe(seen[1]);
+  });
   it("falls back when a stream errors before content, and reports when everything fails", async () => {
     const err = `data: ${JSON.stringify({ error: { message: "overloaded" } })}\n\n`;
     const open = async (p: "groq", m: string) => (m === "g/a" ? ok(p, m, err) : ok(p, m, sse({ content: "fine" })));

@@ -42,6 +42,8 @@ export function orderModels(models: ModelRef[], k: number, now: number, cool: Re
   return live.length ? live : rotated; // everything cooling: try anyway rather than fail without a request
 }
 
+export const MODEL_TIMEOUT_MS = 40_000;
+
 export type ModelResult = { ok: true; text: string; model: string; provider: ChatProvider } | { ok: false; error: string };
 
 /**
@@ -52,12 +54,13 @@ export async function* callModel(
   agent: string,
   messages: ChatMessage[],
   deps: ModelDeps,
-  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean } = {},
+  o: { signal?: AbortSignal; round?: number; maxTokens?: number; answerDeltas?: boolean; modelTimeoutMs?: number } = {},
 ): AsyncGenerator<CEvent, ModelResult> {
   let last = "no model available";
   for (const m of orderModels(deps.models, o.round ?? 0, deps.now())) {
     if (o.signal?.aborted) return { ok: false, error: "cancelled" };
-    const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal, maxTokens: o.maxTokens ?? 900 });
+    const deadline = AbortSignal.timeout(o.modelTimeoutMs ?? MODEL_TIMEOUT_MS); // a stalled model costs this long, not the adapter's 60s
+    const opened = await deps.open(m.provider, m.model, messages, { signal: o.signal ? AbortSignal.any([o.signal, deadline]) : deadline, maxTokens: o.maxTokens ?? 900 });
     if (!opened.ok) {
       last = opened.reason;
       if (/http (402|403|404|410)\b/.test(opened.reason)) cooldown.set(`${m.provider}:${m.model}`, deps.now() + 600_000);
