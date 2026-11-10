@@ -45,6 +45,10 @@ describe("verifyRival (cite or die)", () => {
     const [first, second] = rival().sources;
     expect(verifyRival(rival({ sources: [{ ...first, quote: "SELLER re-listed THE item" }, second] }), FETCHED, NOW).ok).toBe(true);
   });
+  it("rejects a source whose operator is not the one that fetched it", () => {
+    const r = verifyRival(rival(), [{ ...PAGE, operator: "exa" }, PAGE2], NOW);
+    expect(r.ok === false && r.errors.join(";")).toContain("operator is tavily but exa fetched it");
+  });
   it("flags sources older than 18 months as stale without rejecting them", () => {
     const old = [{ ...PAGE, publishedMs: NOW - 19 * 30 * 86_400_000 }, PAGE2];
     expect(verifyRival(rival(), old, NOW)).toEqual({ ok: true, domains: 2, stale: true });

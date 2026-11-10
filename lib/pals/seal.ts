@@ -12,7 +12,7 @@ export interface SealDecision {
 export const MAX_LIVE_CONDITIONS = 3;
 
 /**
- * SealPal. Pure. Every axis closed -> SEALED. An open axis that can still be watched at runtime -> CONDITIONAL.
+ * SealPal. Pure. Every EXAMINED axis closed -> SEALED (axes nobody examined are listed as excluded, never counted). An open axis that can still be watched at runtime -> CONDITIONAL.
  * An open hard axis, or an open axis nobody can observe, or too much dissent, or nothing measured at all -> REFUSED.
  * This may change a program before sealing; it never produces or alters a verdict.
  */
@@ -26,7 +26,7 @@ export function decideSeal(rows: LadderRow[]): SealDecision {
   const blind = open.find((r) => r.status === "NOT_MEASURABLE" && !ARCHETYPE_TABLE[r.archetype].observable);
   if (blind) return { seal: "REFUSED", reason: `unobservable axis open: ${blind.archetype}`, liveConditions: [] };
 
-  if (open.length === 0) return { seal: "SEALED", reason: "every axis closed", liveConditions: [] };
+  if (open.length === 0) return { seal: "SEALED", reason: `every examined axis closed (${live.length})`, liveConditions: [] };
   const liveConditions = open.map((r) => r.archetype);
   if (liveConditions.length > MAX_LIVE_CONDITIONS) return { seal: "REFUSED", reason: `${liveConditions.length} open axes is more dissent than a program can carry`, liveConditions: [] };
   return { seal: "CONDITIONAL", reason: `open but observable: ${liveConditions.join(", ")}`, liveConditions };

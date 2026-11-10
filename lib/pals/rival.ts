@@ -41,6 +41,7 @@ export interface FetchedPage {
   text: string;
   fetchedAtMs: number;
   publishedMs?: number;
+  operator?: "tavily" | "exa";
 }
 
 export type RivalCheck = { ok: true; domains: number; stale: boolean } | { ok: false; errors: string[] };
@@ -68,6 +69,7 @@ export function verifyRival(input: unknown, fetched: FetchedPage[], nowMs: numbe
     if (!page) return void errors.push(`sources.${i}: ${s.url} was never fetched`);
     if (s.fetchedAtMs !== page.fetchedAtMs) errors.push(`sources.${i}: fetchedAtMs is not the fetcher's stamp`);
     if (page.fetchedAtMs > nowMs) errors.push(`sources.${i}: fetched in the future`);
+    if (page.operator && page.operator !== s.operator) errors.push(`sources.${i}: operator is ${s.operator} but ${page.operator} fetched it`);
     if (!squash(page.text).includes(squash(s.quote))) errors.push(`sources.${i}: quote is not in the fetched text`);
     hosts.add(hostOf(s.url));
     if (page.publishedMs !== undefined && nowMs - page.publishedMs > STALE_MS) stale = true;
