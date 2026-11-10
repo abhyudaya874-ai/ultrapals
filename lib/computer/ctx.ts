@@ -10,7 +10,7 @@ import { research } from "@/lib/research/run";
 import { createPromise, findPromises, promiseInfo, settlePromise } from "./promise-ops";
 import type { CEvent } from "./events";
 import { defaultModelDeps, type ModelDeps } from "./model";
-import { publicBase } from "@/lib/env";
+import { getEnv, publicBase } from "@/lib/env";
 import type { Session } from "./session";
 
 /** Everything an agent touches the outside world through. Tests pass fakes; production passes defaultDeps. */
@@ -32,6 +32,8 @@ export interface Deps {
   /** The money path, reachable ONLY through /api/promise ops — never computeVerdict, never a direct capture. */
   promise: { create: typeof createPromise; settle: typeof settlePromise; info: typeof promiseInfo; find: typeof findPromises };
   approveOrder: typeof approveOrderOnBrowser;
+  /** Which SuperPal sandbox keys are present (never their values). Blank env -> {} so tests and builds never crash. */
+  superKeys: () => Record<string, boolean>;
   orderStatus: (orderId: string) => Promise<AdapterResult<{ status: string }>>;
 }
 
@@ -44,6 +46,14 @@ export const defaultDeps: Deps = {
   research,
   promise: { create: createPromise, settle: settlePromise, info: promiseInfo, find: findPromises },
   approveOrder: approveOrderOnBrowser,
+  superKeys: () => {
+    try {
+      const e = getEnv();
+      return Object.fromEntries(["STRIPE_SANDBOX_KEY","SHOPIFY_SANDBOX_KEY","APPLE_SANDBOX_KEY","ADYEN_SANDBOX_KEY","WISE_SANDBOX_KEY","KLARNA_SANDBOX_KEY","SQUARE_SANDBOX_KEY","COINBASE_SANDBOX_KEY"].map((k) => [k, Boolean(e[k as keyof typeof e])]));
+    } catch {
+      return {};
+    }
+  },
   orderStatus: async (orderId) => {
     const o = await paypal.getOrder(orderId, { signal: AbortSignal.timeout(8000) });
     return o.ok ? { ok: true, data: { status: o.orderStatus } } : degrade(`paypal order read: ${o.issue}`);

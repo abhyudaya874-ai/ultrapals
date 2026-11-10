@@ -8,13 +8,20 @@ export type Metric =
   | "fee_over_budget_minor"
   | "unquoted_fx_claims"
   | "unsigned_agent_actions"
-  | "reversal_unverified";
+  | "reversal_unverified"
+  | "typed_error_coverage"
+  | "machine_readable_offer"
+  | "rail_routing_present"
+  | "fx_quote_present"
+  | "deferral_present"
+  | "assistant_ordering_present";
 
 export type Provenance = "analyst" | "published" | "measured";
 export type RowStatus = "BAR_MET" | "BAR_MISSED" | "NOT_MEASURABLE" | "NOT_APPLICABLE";
 
 interface Bar {
   metric: Metric;
+  op: "<=" | ">=";
   value: number;
   provenance: Provenance;
   hard: boolean; // a miss refuses the deal instead of shipping a live condition
@@ -23,14 +30,14 @@ interface Bar {
 
 /** Fixed per-archetype pass lines. The model picks which archetypes apply; it never writes a threshold. Every bar is `observed <= value`. */
 export const ARCHETYPE_TABLE: Record<Archetype, Bar> = {
-  counterparty: { metric: "attacks_missed", value: 0, provenance: "measured", hard: true, observable: true },
-  latency: { metric: "human_steps_at_capture", value: 0, provenance: "analyst", hard: false, observable: true },
-  friction: { metric: "buyer_steps", value: 2, provenance: "analyst", hard: false, observable: true },
-  evidence: { metric: "evidence_fields_missing", value: 0, provenance: "analyst", hard: false, observable: true },
-  cost: { metric: "fee_over_budget_minor", value: 0, provenance: "measured", hard: false, observable: true },
-  corridor: { metric: "unquoted_fx_claims", value: 0, provenance: "analyst", hard: false, observable: true },
-  identity: { metric: "unsigned_agent_actions", value: 0, provenance: "analyst", hard: false, observable: false },
-  reversal: { metric: "reversal_unverified", value: 0, provenance: "measured", hard: true, observable: true },
+  counterparty: { metric: "attacks_missed", op: "<=", value: 0, provenance: "measured", hard: true, observable: true },
+  latency: { metric: "human_steps_at_capture", op: "<=", value: 0, provenance: "analyst", hard: false, observable: true },
+  friction: { metric: "buyer_steps", op: "<=", value: 2, provenance: "analyst", hard: false, observable: true },
+  evidence: { metric: "evidence_fields_missing", op: "<=", value: 0, provenance: "analyst", hard: false, observable: true },
+  cost: { metric: "fee_over_budget_minor", op: "<=", value: 0, provenance: "measured", hard: false, observable: true },
+  corridor: { metric: "unquoted_fx_claims", op: "<=", value: 0, provenance: "analyst", hard: false, observable: true },
+  identity: { metric: "unsigned_agent_actions", op: "<=", value: 0, provenance: "analyst", hard: false, observable: false },
+  reversal: { metric: "reversal_unverified", op: "<=", value: 0, provenance: "measured", hard: true, observable: true },
 };
 
 /** What the run actually produced, already extracted from the event log. A missing key means "could not see". */
@@ -43,7 +50,7 @@ export interface Measurements {
 export interface LadderRow {
   archetype: Archetype;
   metric: Metric;
-  bar: { op: "<="; value: number; provenance: Provenance };
+  bar: { op: "<=" | ">="; value: number; provenance: Provenance };
   observed: number | null;
   status: RowStatus;
   note?: string;
@@ -56,13 +63,13 @@ export interface LadderRow {
 export function scoreLadder(m: Measurements, archetypes: readonly Archetype[] = ARCHETYPES): LadderRow[] {
   return archetypes.map((archetype) => {
     const bar = ARCHETYPE_TABLE[archetype];
-    const base = { archetype, metric: bar.metric, bar: { op: "<=" as const, value: bar.value, provenance: bar.provenance } };
+    const base = { archetype, metric: bar.metric, bar: { op: bar.op, value: bar.value, provenance: bar.provenance } };
     const why = m.notApplicable?.[archetype];
     if (why) return { ...base, observed: null, status: "NOT_APPLICABLE", note: why };
     const observed = m.values[bar.metric];
     if (observed === undefined || !Number.isInteger(observed) || observed < 0) return { ...base, observed: null, status: "NOT_MEASURABLE" };
     if (archetype === "counterparty" && (m.attacksRun ?? 0) < 1) return { ...base, observed, status: "NOT_MEASURABLE", note: "no attack was run" };
-    return { ...base, observed, status: observed <= bar.value ? "BAR_MET" : "BAR_MISSED" };
+    return { ...base, observed, status: (bar.op === "<=" ? observed <= bar.value : observed >= bar.value) ? "BAR_MET" : "BAR_MISSED" };
   });
 }
 

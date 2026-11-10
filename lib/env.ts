@@ -54,6 +54,14 @@ const Schema = z.object({
   BLUESMINDS_API_KEY: opt(),
   TAVILY_API_KEY: opt(),
   EXA_API_KEY: opt(),
+  STRIPE_SANDBOX_KEY: opt(), // SuperPal examiners (D-RIVAL): keys arrive later; blank = that row is NOT_MEASURABLE
+  SHOPIFY_SANDBOX_KEY: opt(),
+  APPLE_SANDBOX_KEY: opt(),
+  ADYEN_SANDBOX_KEY: opt(),
+  WISE_SANDBOX_KEY: opt(),
+  KLARNA_SANDBOX_KEY: opt(),
+  SQUARE_SANDBOX_KEY: opt(),
+  COINBASE_SANDBOX_KEY: opt(),
   PAYPAL_SANDBOX_BUYER_EMAIL: opt(), // scripted approval on the live browser; never sent to a model
   PAYPAL_SANDBOX_BUYER_PASSWORD: opt(),
 });

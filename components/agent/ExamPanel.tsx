@@ -35,6 +35,19 @@ export function ExamPanel({ card }: { card: ExamCard }) {
         ))}
       </ul>
       {card.seal.liveConditions.length > 0 && <p className="text-[12.5px] text-warn">Held live at runtime: {card.seal.liveConditions.join(", ")}</p>}
+      {card.measuredFrom.length > 0 && <p className="text-[12.5px] text-fg-dim" data-testid="exam-measured">Measured from the real promise run: {card.measuredFrom.join(", ")}</p>}
+
+      <Disclosure label={`SuperPals: the rival delta (${card.superpals.filter((s) => s.status === "BAR_MET").length}/${card.superpals.length} met)`} testId="superpals">
+        <ul className="space-y-1.5 pb-2 pl-1 text-[12.5px]" data-testid="superpal-rows">
+          {card.superpals.map((s) => (
+            <li key={s.pal.id} className="flex items-baseline gap-2">
+              <span className="w-24 shrink-0 text-fg">{s.pal.name}</span>
+              <span className="min-w-0 flex-1 truncate text-fg-dim">{s.observed === null ? s.note ?? s.pal.edge : `${s.pal.metric.replace(/_/g, " ")}: ${s.observed} (bar ${s.pal.op} ${s.pal.value})`}</span>
+              <span className={`shrink-0 ${ROW[s.status].tone}`}>{ROW[s.status].label}</span>
+            </li>
+          ))}
+        </ul>
+      </Disclosure>
 
       <Disclosure label={`Attacks on the judge: ${survived}/${card.attacks.run.length} survived`} meta={card.attacks.skipped.length ? `${card.attacks.skipped.length} guarded elsewhere` : undefined}>
         <ul className="space-y-0.5 pb-2 pl-1 text-[12.5px]">

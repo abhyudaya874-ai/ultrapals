@@ -1,6 +1,8 @@
 import type { ChatMessage } from "@/lib/integrations/chat";
 import { buildCard, summarizeCard } from "@/lib/pals/card";
 import { runExam } from "@/lib/pals/exam";
+import { measureRun } from "@/lib/pals/measure";
+import { scoreSuperPals } from "@/lib/pals/superpals";
 import { generateRivals, type GenDeps } from "@/lib/pals/generate";
 import type { SubCtx } from "./ctx";
 import type { CEvent } from "./events";
@@ -31,8 +33,9 @@ export async function* runRivalAgent(ctx: SubCtx, task: string): AsyncGenerator<
       if (res.entries.length === 0) return `Rival exam could not run: ${res.error ?? "no rivals"}. Do not claim the deal was examined.`;
       const t0 = Date.now();
       yield { kind: "step", agent, id: "exam", label: "Attacking the judge with the rivals' hostile worlds", state: "running" };
-      const exam = runExam(res.entries.map((e) => e.rival));
-      const card = buildCard(task, res, exam);
+      const run = measureRun(ctx.session.lastPromiseRun ?? null);
+      const exam = runExam(res.entries.map((e) => e.rival), { values: run.values, notApplicable: run.notApplicable });
+      const card = buildCard(task, res, exam, scoreSuperPals({ values: run.values, keysPresent: deps.superKeys() }), run.from);
       yield { kind: "step", agent, id: "exam", label: "Attacked the judge with the rivals' hostile worlds", state: "ok", detail: `${exam.attacks.run.length} attacks, ${exam.seal.seal}`, ms: Date.now() - t0 };
       yield { kind: "ladder", agent, card };
       return summarizeCard(card);

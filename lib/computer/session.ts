@@ -1,6 +1,7 @@
 import type { LiveBrowser } from "@/lib/integrations/kbrowser";
 import type { WebSource } from "@/lib/integrations/types";
 import { segmentCitations } from "@/lib/research/citations";
+import type { PromiseRunLog } from "@/lib/pals/measure";
 import { canonicalUrl, hostOf, type Source } from "@/lib/research/sources";
 
 export interface HistoryTurn {
@@ -18,6 +19,7 @@ export interface Session {
   busy: boolean;
   lastUsed: number;
   seq: number; // agent id counter
+  lastPromiseRun?: PromiseRunLog; // what PromisePal last really did; RivalPal measures the exam against it
 }
 
 export const MAX_SOURCES = 30;

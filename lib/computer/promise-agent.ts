@@ -3,6 +3,7 @@ import { approveUrlFor } from "@/lib/paypal";
 import type { AdapterResult } from "@/lib/integrations/types";
 import { ensureVm, type SubCtx } from "./ctx";
 import type { CEvent } from "./events";
+import type { PromiseRunLog } from "@/lib/pals/measure";
 import type { PromiseInfo } from "./promise-ops";
 
 const STOP = new Set([
@@ -171,6 +172,15 @@ export async function* runPromiseAgent(ctx: SubCtx, task: string): AsyncGenerato
   const after = await deps.promise.info(pid);
   const state = after.ok ? after.data?.state : undefined;
   yield step("Settled", state === "captured" ? "ok" : "error", state, Date.now() - tSettle);
+
+  // The run log: what really happened, read back from PayPal. RivalPal measures its exam against this.
+  const read = await deps.orderStatus(orderId);
+  const log: PromiseRunLog = {
+    promiseId: pid, approved: true, settled: st.ok, state: state ?? "unknown",
+    orderStatusAfter: read.ok ? read.data.status : null, moneyOpsCarriedId: true, currency: article.currency,
+  };
+  ctx.session.lastPromiseRun = log;
+  yield step("Read the order back", read.ok ? "ok" : "error", read.ok ? read.data.status : read.reason, 0);
 
   if (state !== "captured") {
     return `The promise settled as "${state ?? "unknown"}" — the $${article.price} was ${state === "released" ? "released, not captured" : "not captured"}. The proof check may have run before PayPal propagated; try settling again from /p?id=${pid}.`;
