@@ -49,3 +49,19 @@ recomputes from that input with the same pure function.
 
 Day 1–2 money path green with all `CAP_*=0`. Day 3 Channel3 + KERNEL (`wire-world-condition`). Day 4 Studio board + Bryntum + Zapier.
 Day 5 Render deploy + sweep, Postman, APIMatic log. Elastic and Astropods last, only once the money path is green twice.
+
+## SuperPal sandbox keys (D-SUPERPALS; keys arrive later, blank = row reports "not provided yet")
+
+| Pal | How to get the key (verified 2026-11-10) | Env key |
+|---|---|---|
+| StripePal | dashboard.stripe.com/register -> API keys; sandbox `sk_test_` keys are instant and free; agent-tagged restricted keys carry approval rules | `STRIPE_SANDBOX_KEY` |
+| SquarePal | developer.squareup.com sign-up -> Developer Console -> Credentials -> Sandbox access token; host `connect.squareupsandbox.com` | `SQUARE_SANDBOX_KEY` |
+| X402Pal | cdp.coinbase.com -> API keys; x402 buyer/seller quickstarts + Agentic Accounts; Base testnet faucet funds it | `COINBASE_SANDBOX_KEY` |
+| KlarnaPal | docs.klarna.com -> Log in -> region -> Playground -> Sign up; key format `klarna_test_api_...` | `KLARNA_SANDBOX_KEY` |
+| AdyenPal | test Customer Area -> Developers > API credentials -> Generate API key (`ws_...@Company...`, shown once) | `ADYEN_SANDBOX_KEY` |
+| WisePal | free sandbox account (no verification, 1M GBP test credit); personal token from the account page (2FA); host `api.wise-sandbox.com` | `WISE_SANDBOX_KEY` |
+| ShopifyPal | Dev Dashboard app -> Client ID + Client secret -> client-credentials token (24h, refresh programmatically); needs a dev store in the same org | `SHOPIFY_SANDBOX_KEY` (store `id:secret`) |
+| ApplePal | NO standalone sandbox: Apple Developer Program ($99/yr) + merchant ID + payment-processing certificate + verified domain, or a PSP. Practical route: PayPal Expanded Checkout supports Apple Pay | `APPLE_SANDBOX_KEY` |
+
+Order: Stripe/Square/Coinbase/Klarna instant -> Adyen -> Wise -> Shopify -> Apple (skip or via PayPal).
+Rules that still bind: O15 (competitor TEST environments only, keys scoped outside the VM), O16 (never a real card), O17 (structure-only rows).
