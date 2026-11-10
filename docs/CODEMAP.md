@@ -158,3 +158,18 @@ lib/capture.ts         -> db, lib/events, lib/paypal, lib/agent/trace
 app/api/promise/route  -> everything above; it is the only caller of computeVerdict
 components/*           -> lib/sse, lib/money, types. Never db, never lib/integrations (except pure bryntum.ts)
 ```
+
+## lib/pals (D-EXAM)
+
+| File | Exports |
+|---|---|
+| `lib/pals/rival.ts` | `ARCHETYPES`, `PAYPAL_CAPS`, `MUTATIONS`, `Rival` (zod), `verifyRival(input, fetched, nowMs)`, `dedupeRivals`, `FetchedPage` |
+| `lib/pals/ladder.ts` | `ARCHETYPE_TABLE`, `scoreLadder(measurements, archetypes?)`, `tally`, `LadderRow`, `RowStatus` |
+| `lib/pals/seal.ts` | `decideSeal(rows)` -> `SEALED \| CONDITIONAL \| REFUSED`, `MAX_LIVE_CONDITIONS` |
+| `lib/pals/attacks.ts` | `runAttacks(mutations)` (real `computeVerdict`), `NOT_AT_VERDICT_LEVEL` |
+| `lib/pals/exam.ts` | `runExam(rivals, observed?)` |
+| `lib/pals/generate.ts` | `generateRivals(contract, deps, signal)` (async generator of steps), `pagesFrom`, `parsePlan`, `parseRivals`, `rivalMessages` |
+| `lib/pals/card.ts` | `ExamCard`, `buildCard`, `summarizeCard` |
+| `lib/computer/rival-agent.ts` | `runRivalAgent(ctx, task)` (RivalPal), emits `{kind:"ladder"}` |
+| `lib/computer/pals.ts` | `APP_NAME`, `PAL_NAMES`, `palName` |
+| `components/agent/ExamPanel.tsx` | `ExamPanel({ card })` |

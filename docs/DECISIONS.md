@@ -149,3 +149,21 @@ The owner rejected the university theme. `lib/campus/**` was never built and mus
   validated and any live key is refused.
 - **O16 — Never enter a real card.** If a signup asks for one, the row is NOT_MEASURABLE (card required) and that rival is dropped.
 - **O17 — Rival rows compare structure only** (never sandbox milliseconds, approval rates or fees) and carry a provenance label.
+
+## 14. D-EXAM: RivalPal and the exam ladder (authorized 2026-11-10)
+
+- **O20 — `lib/pals/**` is a new top-level module** (5th-file rule satisfied once, here). Pure code plus injected deps; tests count with
+  the file they test (O3). It never imports a vendor adapter: search and models arrive through `GenDeps`.
+- **Examiners, not deciders.** RivalPal researches how a deal fails (Tavily + Exa), spawns rivals, attacks the REAL `computeVerdict`
+  with ten hostile worlds (`lib/pals/attacks.ts`) and reports a ladder. It changes nothing at runtime and never moves money. The seal
+  (SEALED / CONDITIONAL / REFUSED) applies to a program before it ships, never to a runtime verdict.
+- **Cite or die.** A rival survives only if every source is a page the fetcher fetched, every quote is a substring of that page, the
+  timestamp and operator are the fetcher's (never the model's), `thesisOwner` appears in the evidence and the counter points at
+  developer.paypal.com. Cited is not true: a substring check proves the quote exists, so every rival carries a confidence
+  (independent domains, staleness) and one-domain rivals are `low`.
+- **Fixed bars, honest blanks.** Pass lines live in `ARCHETYPE_TABLE`; the model never writes one. A missing measurement is
+  NOT_MEASURABLE and never a pass. The judge always faces the full battery; other axes appear only where a cited rival owns them, and
+  the rest print as excluded.
+- **Known limit.** A text-only exam cannot observe most non-counterparty axes (identity, reversal need a real run), so those rows are
+  NOT_MEASURABLE and a rival on a hard or unobservable axis REFUSES the deal. Measuring them from a real PromisePal run is the next step.
+- Each model gets its own 40s deadline in `callModel` (`MODEL_TIMEOUT_MS`): a live run once spent 144s on stalled models.
