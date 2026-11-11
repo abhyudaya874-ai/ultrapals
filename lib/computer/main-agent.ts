@@ -6,6 +6,7 @@ import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
 import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
 import { Spec, asksForSchedule, describeSchedule, parseSchedule } from "@/lib/automations/core";
+import { KIND_INFO, type Kind } from "@/lib/automations/kinds";
 import { runChart } from "./chart-action";
 import { openAppArtifact } from "./app-open";
 import { IMAGE_INSTRUCTION } from "./images";
@@ -44,7 +45,7 @@ export interface MainInput {
   /** True once the run is short of time: the next planning round must be the answer, whatever budget of rounds is left. */
   hurry?: () => boolean;
   /** Run this delegation before the first planning round (the person typed an instruction into the live browser: skip deciding who should do it). */
-  firstDelegate?: { agent: "browser"; task: string; /** The pause this continues, when the person has just helped. */ resumed?: Handoff };
+  firstDelegate?: { agent: Exclude<keyof typeof RUNNERS, "promise">; task: string; /** The pause this continues, when the person has just helped. */ resumed?: Handoff };
   /** Steps the browser agent may take in this run. */
   browserSteps?: number;
   /** A person is watching: the browser agent may stop and ask them to act in the live browser (a CAPTCHA, a sign-in). Off for contenders and automations. */
@@ -219,7 +220,7 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
 }
 
 /** UltraPal's `automate` action: validated in code, gated on the user's own words, then created through the same store as the Automations page. */
-async function* createAutomation(id: string, a: { name: string; task: string; schedule: string }, input: MainInput, deps: Deps): AsyncGenerator<CEvent, string> {
+async function* createAutomation(id: string, a: { name: string; task: string; schedule: string; kind?: Kind; count?: number }, input: MainInput, deps: Deps): AsyncGenerator<CEvent, string> {
   const label = `Creating automation "${a.name}"`;
   const refuse = function* (why: string, detail = why): Generator<CEvent, string> {
     yield { kind: "step", agent: "main", id, label, state: "error", detail };
@@ -229,11 +230,13 @@ async function* createAutomation(id: string, a: { name: string; task: string; sc
   if (!asksForSchedule(input.prompt)) return yield* refuse("The user's message does not ask for anything to repeat, so no automation was created. Answer or delegate instead; do not try again.", "the message did not ask for a schedule");
   const schedule = parseSchedule(a.schedule);
   if (!schedule) return yield* refuse(`The schedule "${a.schedule}" could not be read. Use "every 6 hours", "every 90 minutes", "hourly", "daily 09:00" or "weekdays 08:30". The shortest interval is 30 minutes.`, "unreadable schedule");
-  const spec = Spec.safeParse({ name: a.name, prompt: a.task, schedule, tzOffsetMin: input.tzOffsetMin ?? 0, level: "standard" });
+  const spec = Spec.safeParse({ name: a.name, prompt: a.task, schedule, tzOffsetMin: input.tzOffsetMin ?? 0, level: "standard", kind: a.kind ?? "task", ...(a.count !== undefined ? { count: a.count } : {}) });
   if (!spec.success) return yield* refuse(`The automation was not valid: ${spec.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}.`);
   yield { kind: "step", agent: "main", id, label, state: "running" };
   const r = await deps.automations.create(spec.data, deps.model.now());
   if (!r.ok) return yield* refuse(`The automation could not be created: ${r.reason}.`, r.reason);
-  yield { kind: "step", agent: "main", id, label: `Created automation "${a.name}"`, state: "ok", detail: describeSchedule(schedule) };
-  return `Created the automation "${a.name}" (${describeSchedule(schedule)}). It runs unattended and its results appear on the Automations page. Tell the user how often it runs and that they can pause or delete it there.`;
+  // A Team task is the plain case and reads as it always did; any other kind is named.
+  const named = spec.data.kind === "task" ? "" : `${KIND_INFO[spec.data.kind].label.toLowerCase()} `;
+  yield { kind: "step", agent: "main", id, label: `Created automation "${a.name}"`, state: "ok", detail: spec.data.kind === "task" ? describeSchedule(schedule) : `${KIND_INFO[spec.data.kind].label} · ${describeSchedule(schedule)}` };
+  return `Created the ${named}automation "${a.name}" (${describeSchedule(schedule)}). It runs unattended and its results appear on the Automations page. Tell the user how often it runs and that they can pause or delete it there.`;
 }

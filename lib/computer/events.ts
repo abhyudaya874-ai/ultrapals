@@ -26,6 +26,8 @@ export type CEvent =
   | { kind: "message"; id: string; from: string; to: string; text: string }
   | { kind: "step"; agent: string; id: string; label: string; state: RunState; detail?: string; ms?: number }
   | { kind: "reasoning"; agent: string; delta: string }
+  /** One model call finished: how many tokens it took and how much the model can hold. `exact` is true when the provider counted them. */
+  | { kind: "usage"; agent: string; prompt: number; completion: number; window: number; model: string; provider: string; exact: boolean }
   | { kind: "term"; agent: string; id: string; command: string; state: RunState; out?: string; exit?: number; ms?: number }
   /** A file written (`patch` is the green/red diff against the old text) or read (`mode: "read"`, `patch` are numbered context rows). `preview` is the new text, capped. */
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string; patch?: DiffLine[]; cut?: number; mode?: "write" | "read" }

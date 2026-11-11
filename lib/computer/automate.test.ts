@@ -33,6 +33,33 @@ describe("the automate action", () => {
     expect(made).toBe(0);
     expect(model.prompts[1]).toContain("could not be read");
   });
+  it("passes the kind and the count through, and names the kind in what it tells the planner", async () => {
+    const seen: unknown[] = [];
+    const watch = '{"action":"automate","name":"Fee watch","task":"Open https://stripe.com/pricing and note the card fee","schedule":"daily 09:00","kind":"watch"}';
+    const model = scripted([watch, '{"action":"answer","text":"Done."}']);
+    const deps = mkDeps(model.open, { automations: { create: (async (spec: unknown) => (seen.push(spec), { ok: true, id: "w1" })) as never } });
+    const { ev } = await collect(runMain(mkSession(), input("watch the Stripe fee page every morning"), deps));
+    expect(seen).toEqual([expect.objectContaining({ kind: "watch", name: "Fee watch" })]);
+    expect(ev.find((e) => e.kind === "step" && e.state === "ok" && e.label.startsWith("Created"))).toMatchObject({ detail: "Page watch · Daily at 09:00" });
+    expect(model.prompts[1]).toContain('Created the page watch automation "Fee watch"');
+    const battle = '{"action":"automate","name":"Rail battle","task":"Which rail is cheapest for $0.25?","schedule":"daily 09:00","kind":"battle","count":3}';
+    const seen2: unknown[] = [];
+    const m2 = scripted([battle, '{"action":"answer","text":"Done."}']);
+    await collect(runMain(mkSession(), input("battle the payment rails every day"), mkDeps(m2.open, { automations: { create: (async (spec: unknown) => (seen2.push(spec), { ok: true, id: "b1" })) as never } })));
+    expect(seen2).toEqual([expect.objectContaining({ kind: "battle", count: 3 })]);
+  });
+  it("refuses a Battle that would repeat every hour, and says how often it may", async () => {
+    let made = 0;
+    const model = scripted(['{"action":"automate","name":"Rail battle","task":"Which rail is cheapest?","schedule":"hourly","kind":"battle"}', '{"action":"answer","text":"ok"}']);
+    const deps = mkDeps(model.open, { automations: { create: (async () => (made++, { ok: true, id: "x" })) as never } });
+    await collect(runMain(mkSession(), input("battle the rails every hour"), deps));
+    expect(made).toBe(0);
+    expect(model.prompts[1]).toContain("Battle automations can repeat at most every 6 hours");
+  });
+  it("an automation kind that does not exist is a format error the planner can correct", () => {
+    expect(parseMainAction('{"action":"automate","name":"n","task":"do it","schedule":"hourly","kind":"teleport"}')).toMatchObject({ ok: false });
+    expect(parseMainAction('{"action":"automate","name":"n","task":"do it","schedule":"hourly","kind":"watch","count":3}')).toMatchObject({ ok: true });
+  });
   it("passes the store's refusal (too many automations) to the planner", async () => {
     const model = scripted([act, '{"action":"answer","text":"You have too many."}']);
     const deps = mkDeps(model.open, { automations: { create: (async () => ({ ok: false, reason: "at most 8 automations; delete one first" })) as never } });

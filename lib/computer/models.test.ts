@@ -106,6 +106,21 @@ describe("hedged race with a fixed order", () => {
     await collect(callModelHedged("main", [{ role: "user", content: "x" }], deps));
     expect(seen.slice(0, 2).sort()).toEqual(["groq:openai/gpt-oss-120b", "groq:openai/gpt-oss-20b"]);
   });
+  it("tells the winner's tokens once, however many models raced", async () => {
+    const s = scripted(['{"ok":1}']);
+    const deps: ModelDeps = { open: s.open, now: () => 1, hedge: 3, rotate: false, models: [{ provider: "groq", model: "openai/gpt-oss-120b" }, { provider: "groq", model: "openai/gpt-oss-20b" }, { provider: "groq", model: "openai/gpt-oss-120b" }] };
+    const { ev, ret } = await collect(callModelHedged("browser-1", [{ role: "user", content: "x" }], deps));
+    const usage = ev.filter((e) => e.kind === "usage");
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({ kind: "usage", agent: "browser-1", exact: false });
+    expect(ret).toMatchObject({ ok: true, usage: { model: expect.stringMatching(/^openai\/gpt-oss-/) } });
+  });
+  it("tells nothing when every racer fails", async () => {
+    const open = (async () => ({ ok: false as const, degraded: true as const, reason: "http 500" })) as never;
+    const deps: ModelDeps = { open, now: () => 1, hedge: 2, rotate: false, models: [{ provider: "groq", model: "openai/gpt-oss-120b" }, { provider: "groq", model: "openai/gpt-oss-20b" }] };
+    const { ev } = await collect(callModelHedged("main", [{ role: "user", content: "x" }], deps));
+    expect(ev.some((e) => e.kind === "usage")).toBe(false);
+  });
   it("still answers when one racer works", async () => {
     const s = scripted(['{"ok":1}']);
     const deps: ModelDeps = { open: s.open, now: () => 1, hedge: 2, rotate: false, models: [{ provider: "groq", model: "openai/gpt-oss-120b" }, { provider: "groq", model: "openai/gpt-oss-20b" }] };

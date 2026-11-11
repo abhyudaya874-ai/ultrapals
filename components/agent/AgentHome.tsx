@@ -1,26 +1,20 @@
 "use client";
 import { useMemo, useRef } from "react";
 import { useStickToBottom } from "@/components/thread/Dock";
-import { IconArrowDown, IconBoard, IconClock, IconGlobe, IconLayers, IconPlus } from "@/components/ui/icons";
+import { IconArrowDown, IconBoard, IconBolt, IconClock, IconGlobe, IconLayers, IconPlus } from "@/components/ui/icons";
 import { UltraOrb } from "@/components/orbs/Orbs";
 import { ultraState } from "@/components/orbs/mood";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { useAgent } from "./AgentProvider";
 import { PromptBox } from "./PromptBox";
+import { fillPrompt } from "./prompt-model";
 import { APP_ARTIFACTS } from "./panel-model";
 import { RunView } from "./RunView";
-
-export const SUGGESTIONS = [
-  "Compare PayPal, Stripe and Square for a marketplace that sells AI-written reports for a few cents each",
-  "Examine this deal: I pay $200 on delivery of a logo design, refund if it is late",
-  "Research how L402 pay-per-request works and save the findings as a CSV",
-  "Build a tiny landing page in the terminal and open it in the browser",
-  "Unlock the premium Newsroom story about micropayment economics and summarise it",
-];
+import { SUGGESTION_CAPTION, startsAtOnce, suggestionsFor } from "./suggestions";
 
 /** The main screen: UltraPal as a full-width chat. Artifacts open in the panel on the right (see ArtifactPanel). */
 export function AgentHome() {
-  const { runs, busy, newChat, panel, openTab, openApp, send } = useAgent();
+  const { runs, busy, newChat, panel, openTab, openApp, send, mode } = useAgent();
   const scroller = useRef<HTMLDivElement>(null);
   const size = runs.reduce((n, r) => n + r.answer.length + r.timeline.length + r.agents.reduce((m, a) => m + a.steps.length + a.terms.length + a.files.length, 0), 0);
   const stick = useStickToBottom(scroller, size);
@@ -37,11 +31,19 @@ export function AgentHome() {
             <p className="mt-1 text-[15px] text-fg-muted">Research the web, drive a live browser, run commands, and move sandbox money only when a verdict computed in code says so.</p>
           </header>
           <PromptBox variant="hero" placeholder="Ask, build, research, or paste a screenshot…" />
-          <ul className="grid gap-2 sm:grid-cols-2" aria-label="Suggestions">
-            {SUGGESTIONS.map((s) => (
-              <li key={s}><button type="button" onClick={() => void send(s)} disabled={busy} className="h-full w-full rounded-card border border-dashed border-line px-3.5 py-3 text-left text-[13.5px] leading-snug text-fg-muted transition-colors hover:border-dock-line hover:bg-surface hover:text-fg disabled:opacity-50">{s}</button></li>
-            ))}
-          </ul>
+          <div>
+            {SUGGESTION_CAPTION[mode.kind] && <p className="mb-2 text-[12px] font-medium uppercase tracking-wide text-fg-dim" data-testid="suggestion-caption">{SUGGESTION_CAPTION[mode.kind]}</p>}
+            <ul key={mode.kind} className="grid gap-2 sm:grid-cols-2" aria-label="Suggestions" data-testid="suggestions" data-mode={mode.kind}>
+              {suggestionsFor(mode.kind).map((s) => (
+                <li key={s.text} className="fade-in">
+                  <button type="button" onClick={() => (startsAtOnce(mode.kind) ? void send(s.text) : fillPrompt(s.text))} disabled={busy} className="press h-full w-full rounded-card border border-dashed border-line px-3.5 py-3 text-left text-[13.5px] leading-snug text-fg-muted transition-colors hover:border-dock-line hover:bg-surface hover:text-fg disabled:opacity-50">
+                    {s.text}
+                    {s.automation && <span className="mt-1.5 flex items-center gap-1 text-[11.5px] text-fg-dim"><IconBolt className="size-3" />Creates an automation</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
           <section aria-label="Open an artifact">
             <h2 className="mb-2 text-[12px] font-medium uppercase tracking-wide text-fg-dim">Open as an artifact</h2>
             <div className="flex flex-wrap gap-2">

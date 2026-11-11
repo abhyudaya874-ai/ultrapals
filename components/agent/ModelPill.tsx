@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
+import { effortOf } from "@/components/orbs/effort";
 import { useDismiss } from "@/components/thread/Dock";
 import { IconCheck, IconChevronDown, IconChevronRight } from "@/components/ui/icons";
 import { LEVELS, LEVEL_INFO, PICKABLE, describeChoice, type Level, type ModelChoice } from "@/lib/computer/models";
@@ -22,6 +23,7 @@ function LevelSlider({ level, onPick }: { level: Level; onPick: (l: Level) => vo
   const track = useRef<HTMLDivElement>(null);
   const n = LEVELS.length;
   const idx = LEVELS.indexOf(level);
+  const color = effortOf(level).color;
   const from = (clientX: number): Level => {
     const r = track.current?.getBoundingClientRect();
     if (!r || r.width <= 28) return level;
@@ -49,9 +51,9 @@ function LevelSlider({ level, onPick }: { level: Level; onPick: (l: Level) => vo
         else if (e.key === "End") onPick(LEVELS[n - 1]);
       }}
     >
-      <div className="absolute inset-y-0 left-0 rounded-full bg-accent/80 transition-[width] duration-150" style={{ width: `calc(14px + ${stopLeft(idx, n)})`, backgroundImage: "radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1.3px)", backgroundSize: "6px 6px" }} />
+      <div className="absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-150" data-testid="effort-fill" style={{ width: `calc(14px + ${stopLeft(idx, n)})`, backgroundColor: color, backgroundImage: "radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1.3px)", backgroundSize: "6px 6px" }} />
       {LEVELS.map((l, i) => i !== idx && <span key={l} className="absolute top-1/2 size-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg-dim/70" style={{ left: stopLeft(i, n) }} />)}
-      <span className="absolute top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md transition-[left] duration-150" style={{ left: stopLeft(idx, n) }} />
+      <span className="absolute top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white transition-[left,box-shadow] duration-150" style={{ left: stopLeft(idx, n), boxShadow: `0 0 0 3px color-mix(in srgb, ${color} 45%, transparent), 0 1px 3px rgba(0,0,0,0.45)` }} />
     </div>
   );
 }
@@ -67,7 +69,7 @@ export function ModelPill({ value, onChange, disabled, allowCustom = true }: { v
     <div className="relative" ref={box}>
       <button type="button" disabled={disabled} onClick={() => { setOpen((o) => !o); setCustom(false); }} aria-haspopup="dialog" aria-expanded={open} data-testid="model-pill" title="Model and effort"
         className="press inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-2/70 pl-2.5 pr-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50">
-        <Dots lit={litDots(value)} />
+        <span style={{ color: effortOf(value.level).color }} className="transition-colors duration-150"><Dots lit={litDots(value)} /></span>
         <span className="max-w-[9rem] truncate">{d.pill}</span>
         <IconChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -77,7 +79,7 @@ export function ModelPill({ value, onChange, disabled, allowCustom = true }: { v
             <>
               <p className="px-1 pb-3 text-[13.5px] leading-snug text-fg-muted"><span className="font-medium text-fg">{d.title}</span> {d.blurb}</p>
               <LevelSlider level={value.level} onPick={(level) => onChange({ level })} />
-              <div className="relative mt-2 h-4 text-[11.5px] text-fg-dim">{LEVELS.map((l, i) => <span key={l} className={`absolute top-0 -translate-x-1/2 ${l === value.level && !value.pin ? "text-fg" : ""}`} style={{ left: stopLeft(i, LEVELS.length) }}>{LEVEL_INFO[l].label}</span>)}</div>
+              <div className="relative mt-2 h-4 text-[11.5px] text-fg-dim">{LEVELS.map((l, i) => <span key={l} className="absolute top-0 -translate-x-1/2 transition-colors duration-150" style={{ left: stopLeft(i, LEVELS.length), ...(l === value.level && !value.pin ? { color: effortOf(l).color } : {}) }}>{LEVEL_INFO[l].label}</span>)}</div>
               {allowCustom && <div className="mt-3 border-t border-line pt-1">
                 <button type="button" onClick={() => setCustom(true)} className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-[13.5px] text-fg-muted hover:text-fg">
                   <span>Custom{value.pin ? <span className="ml-2 text-fg-dim">{d.pill}</span> : null}</span><IconChevronRight className="size-4" />

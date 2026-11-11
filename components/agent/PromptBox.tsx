@@ -4,8 +4,9 @@ import { IconArrowUp, IconImage, IconPlus, IconStop, IconX } from "@/components/
 import { MODE_INFO } from "@/lib/arena/mode";
 import { MAX_IMAGES } from "@/lib/computer/images";
 import { useAgent } from "./AgentProvider";
+import { ContextRings } from "./ContextRings";
 import { ModeBar } from "./ModeBar";
-import { canSend, placeholderFor } from "./prompt-model";
+import { FILL_EVENT, canSend, placeholderFor } from "./prompt-model";
 import { ModelPill } from "./ModelPill";
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
@@ -36,6 +37,17 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [text, ref]);
   useEffect(() => { ref.current?.focus(); }, [focusTick, ref]);
+  // a suggestion that opens a Battle or Loop only fills the box: the person reads it, edits it if they like, and presses Enter
+  useEffect(() => {
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<unknown>).detail;
+      if (typeof t !== "string") return;
+      setText(t.slice(0, 2000));
+      ref.current?.focus();
+    };
+    window.addEventListener(FILL_EVENT, on);
+    return () => window.removeEventListener(FILL_EVENT, on);
+  }, [ref]);
   // a scenario waiting for approval stays in the box until it is approved, so cancelling the editor loses nothing
   useEffect(() => {
     if (hadPlan.current && !pendingPlan && busy) setText("");
@@ -109,6 +121,7 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
           <ModeBar disabled={busy} />
           <span className="flex-1" />
           <ModelPill value={model} onChange={setModel} disabled={busy} />
+          <ContextRings draft={text} />
           {busy ? (
             <button type="button" onClick={stop} aria-label="Stop" className="press grid size-9 place-items-center rounded-full bg-surface-2 text-fg hover:bg-line"><IconStop className="size-4" /></button>
           ) : (

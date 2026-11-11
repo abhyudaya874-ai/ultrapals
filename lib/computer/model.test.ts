@@ -43,13 +43,14 @@ async function drain(g: AsyncGenerator<CEvent, unknown>) {
 describe("callModel", () => {
   it("streams reasoning as events and returns the content", async () => {
     const { ev, ret } = await drain(callModel("main", [], deps(async (p: "groq", m: string) => ok(p, m, sse({ reasoning: "hm" }, { content: '{"a":1}' })))));
-    expect(ev).toEqual([{ kind: "reasoning", agent: "main", delta: "hm" }]);
-    expect(ret).toEqual({ ok: true, text: '{"a":1}', model: "a", provider: "groq" });
+    expect(ev.filter((e) => e.kind !== "usage")).toEqual([{ kind: "reasoning", agent: "main", delta: "hm" }]);
+    expect(ret).toMatchObject({ ok: true, text: '{"a":1}', model: "a", provider: "groq" });
   });
   it("streams answer deltas only when asked", async () => {
     const open = async (p: "groq", m: string) => ok(p, m, sse({ content: "Hi " }, { content: "there" }));
-    expect((await drain(callModel("main", [], deps(open), { answerDeltas: true }))).ev).toEqual([{ kind: "answer", delta: "Hi " }, { kind: "answer", delta: "there" }]);
-    expect((await drain(callModel("main", [], deps(open)))).ev).toEqual([]);
+    const text = (r: { ev: CEvent[] }) => r.ev.filter((e) => e.kind !== "usage");
+    expect(text(await drain(callModel("main", [], deps(open), { answerDeltas: true })))).toEqual([{ kind: "answer", delta: "Hi " }, { kind: "answer", delta: "there" }]);
+    expect(text(await drain(callModel("main", [], deps(open))))).toEqual([]);
   });
   it("falls back past a 429 and puts the rate-limited model on cooldown for the next call", async () => {
     const tried: string[] = [];
@@ -86,5 +87,42 @@ describe("callModel", () => {
     const c = new AbortController();
     c.abort();
     expect((await drain(callModel("x", [], deps(async () => bad("x")), { signal: c.signal }))).ret).toEqual({ ok: false, error: "cancelled" });
+  });
+});
+
+describe("callModel reports the tokens it used", () => {
+  const withUsage = (...c: object[]) => c.map((x) => `data: ${JSON.stringify(x)}\n\n`).join("") + "data: [DONE]\n\n";
+  const msgs = [{ role: "system" as const, content: "Answer briefly." }, { role: "user" as const, content: "What is 2+2?" }];
+  it("tells the provider's own count, marked as counted, with the model's window", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, withUsage({ choices: [{ delta: { content: "Four." } }] }, { choices: [], usage: { prompt_tokens: 92, completion_tokens: 27 } }));
+    const { ev, ret } = await drain(callModel("main", msgs, deps(open)));
+    expect(ev.filter((e) => e.kind === "usage")).toEqual([{ kind: "usage", agent: "main", prompt: 92, completion: 27, window: 128_000, model: "g/a", provider: "groq", exact: true }]);
+    expect(ret).toMatchObject({ ok: true, usage: { prompt: 92, completion: 27, exact: true } });
+  });
+  it("reads Groq's count from x_groq as well", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, withUsage({ choices: [{ delta: { content: "Four." } }] }, { choices: [], x_groq: { usage: { prompt_tokens: 40, completion_tokens: 9 } } }));
+    const { ev } = await drain(callModel("main", msgs, deps(open)));
+    expect(ev.find((e) => e.kind === "usage")).toMatchObject({ prompt: 40, completion: 9, exact: true });
+  });
+  it("estimates from the actual messages and the text when the provider sent no count, thinking included, and says so", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, sse({ reasoning: "x".repeat(400) }, { content: "Four." }));
+    const { ev } = await drain(callModel("main", msgs, deps(open)));
+    const u = ev.find((e) => e.kind === "usage");
+    expect(u).toMatchObject({ exact: false, window: 128_000 });
+    expect(u && u.kind === "usage" && u.prompt).toBeGreaterThan(8);
+    expect(u && u.kind === "usage" && u.completion).toBeGreaterThan(90); // the 400 characters of thinking count
+  });
+  it("only the model that answered is reported: a model that failed first costs no event", async () => {
+    const open = async (p: "groq", m: string) => (m === "g/a" ? bad("groq http 500") : ok(p, m, sse({ content: "ok" })));
+    const { ev } = await drain(callModel("main", msgs, deps(open)));
+    expect(ev.filter((e) => e.kind === "usage")).toHaveLength(1);
+    expect(ev.find((e) => e.kind === "usage")).toMatchObject({ model: "g/b" });
+  });
+  it("a reply that was refused tells nothing: the next model's call is the one that counts", async () => {
+    let n = 0;
+    const open = async (p: "groq", m: string) => ok(p, m, sse({ content: n++ === 0 ? "prose" : '{"a":1}' }));
+    const { ev, ret } = await drain(callModel("main", msgs, deps(open), { accept: (t) => t.startsWith("{") }));
+    expect(ev.filter((e) => e.kind === "usage")).toHaveLength(1);
+    expect(ret).toMatchObject({ ok: true, text: '{"a":1}' });
   });
 });

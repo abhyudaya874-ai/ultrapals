@@ -1,4 +1,5 @@
 import { openChat, readDeltas, type ChatMessage, type ChatProvider } from "@/lib/integrations/chat";
+import { usageFor, type Usage } from "@/lib/usage/tokens";
 import type { CEvent } from "./events";
 
 export interface ModelRef {
@@ -50,7 +51,10 @@ export function orderModels(models: ModelRef[], k: number, now: number, cool: Re
 export const MODEL_TIMEOUT_MS = 40_000;
 
 /** A failed call carries `rejected` (the last reply `accept` refused) when models did answer but none with something usable, so a caller can tell that from "no model answered". */
-export type ModelResult = { ok: true; text: string; model: string; provider: ChatProvider } | { ok: false; error: string; rejected?: string };
+export type ModelResult = { ok: true; text: string; model: string; provider: ChatProvider; usage: Usage } | { ok: false; error: string; rejected?: string };
+
+/** The event for a finished call. */
+export const usageEvent = (agent: string, u: Usage): CEvent => ({ kind: "usage", agent, prompt: u.prompt, completion: u.completion, window: u.window, model: u.model, provider: u.provider, exact: u.exact });
 
 /**
  * One LLM turn. Streams the model's reasoning as `reasoning` events for `agent`; content is returned (and, with
@@ -76,12 +80,15 @@ export async function* callModel(
       continue;
     }
     let text = "";
+    let thought = "";
+    let counted: { prompt: number; completion: number } | undefined;
     let shown = "";
     let failed: string | null = null;
     try {
       for await (const d of readDeltas(opened.data.body)) {
         if (d.error) { failed = d.error; break; }
-        if (d.reasoning) yield { kind: "reasoning", agent, delta: d.reasoning };
+        if (d.usage) counted = d.usage;
+        if (d.reasoning) { thought += d.reasoning; yield { kind: "reasoning", agent, delta: d.reasoning }; }
         if (d.content) {
           text += d.content;
           if (o.answerDeltas) yield { kind: "answer", delta: d.content };
@@ -106,7 +113,10 @@ export async function* callModel(
     }
     if (!text.trim()) { last = "empty reply"; continue; }
     if (o.accept && !o.accept(text)) { last = `${m.model.split("/").pop()} replied but the reply was unusable`; rejected = text; continue; } // try the next model, not the next round
-    return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider };
+    // The provider's own count when it sent one, an estimate from the text when it did not (usageFor says which).
+    const usage = usageFor({ messages, text, thought, counted, model: m.model, provider: m.provider });
+    yield usageEvent(agent, usage);
+    return { ok: true, text, model: m.model.split("/").pop() ?? m.model, provider: m.provider, usage };
   }
   return rejected === undefined ? { ok: false, error: `every allowlisted model failed: ${last}` } : { ok: false, error: `every allowlisted model failed: ${last}`, rejected };
 }
@@ -171,5 +181,8 @@ export async function* callModelHedged(
     if (finished) break;
     await new Promise<void>((r) => { wake = r; if (queue.length || finished) ping(); });
   }
-  return result;
+  const won = await result;
+  // The racers' own events were dropped above, so the winner's usage is told here, once.
+  if (won.ok) yield usageEvent(agent, won.usage);
+  return won;
 }

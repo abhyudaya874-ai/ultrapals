@@ -12,7 +12,7 @@ describe("main agent", () => {
     const model = scripted(['{"thought":"enough","action":"answer","text":"The verdict is WAIT because the fact is missing."}']);
     const session = mkSession();
     const { ev } = await collect(runMain(session, { ...input, pageContext: "Latest stored verdict: FACT_MISSING (indeterminate) -> WAIT." }, mkDeps(model.open)));
-    expect(kinds(ev)).toEqual(["agent", "answer", "agent", "done"]); // the answer now streams as the model writes it, before the main row is marked done
+    expect(kinds(ev)).toEqual(["agent", "answer", "usage", "agent", "done"]); // the answer streams as the model writes it; its call reports its tokens before the main row is marked done
     expect(ev.find((e) => e.kind === "answer")).toMatchObject({ delta: "The verdict is WAIT because the fact is missing." });
     expect(model.prompts[0]).toContain("FACT_MISSING");
     expect(session.history.map((h) => h.role)).toEqual(["user", "assistant"]);

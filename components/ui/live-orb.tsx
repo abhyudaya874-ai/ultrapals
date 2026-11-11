@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 export type LiveOrbVariant = "white" | "black" | "webgl" | "custom";
@@ -517,6 +517,8 @@ export function createLiveOrb(canvas: HTMLCanvasElement, initial: LiveOrbOptions
 
 export type LiveOrbProps = Omit<LiveOrbOptions, "onHasGl"> & {
   className?: string;
+  /** Extra style for the orb's box (width and height are always `size`). */
+  style?: CSSProperties;
   /** Edge length in CSS pixels. Default `280`. */
   size?: number;
 };
@@ -535,7 +537,7 @@ export function FallbackFace({ resolved }: { resolved: ReturnType<typeof resolve
  * Evenly lit sphere with two capsule eyes that follow the pointer. The orb stays put; only the gaze moves. Without a `variant` it is white
  * on dark pages and black on light ones.
  */
-export function LiveOrb({ className, size = 280, variant, color, eyeColor, colors, interactive = true, blink = true, theme = "auto" }: LiveOrbProps) {
+export function LiveOrb({ className, style, size = 280, variant, color, eyeColor, colors, interactive = true, blink = true, theme = "auto" }: LiveOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const instanceRef = useRef<LiveOrbInstance | null>(null);
   const [hasGl, setHasGl] = useState(false);
@@ -566,7 +568,7 @@ export function LiveOrb({ className, size = 280, variant, color, eyeColor, color
 
   const resolved = resolveVariant(variant, color, eyeColor, colors, dark);
   return (
-    <div data-slot="live-orb" role="img" aria-label="Orb character" className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
+    <div data-slot="live-orb" role="img" aria-label="Orb character" className={cn("relative shrink-0", className)} style={{ ...style, width: size, height: size }}>
       {!hasGl ? <FallbackFace resolved={resolved} /> : null}
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
     </div>

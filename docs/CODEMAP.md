@@ -246,3 +246,16 @@ components/*           -> lib/sse, lib/money, types. Never db, never lib/integra
   `models` (`BROWSING_FIRST`, `browsingDeps`), `model` (`callModel` `accept`; `ModelResult.rejected`), `reader` (walls are blocked, not content).
 - `app/api/browser/route.ts` (5th file: a new route): GET state; POST `goto`, `back`, `forward`, `reload`, `open`. Rate limited (90 state reads, 40 actions, 4 new browsers per 5 minutes per IP).
 - `components/agent/`: `BrowserPip` + `pip-model` (connection state machine), `BrowserBar` (`AddressBar`, `AgentBox`), `browser-client` (calls the route), `HandoffCard` (the thread card). `lib/computer/events.ts` has the `handoff` event.
+
+## History, saved conversations and automation kinds (D-HISTORY)
+- `components/shell/`: `history` (pure: `HItem`, `fromPromise`, `fromAutomation`, `fromConvo`, `filterItems`, `toggleKind`, `countsByKind`, `sortItems`, `groupItems`, `splitPinned`, `togglePin`, `toggleKey`, `bulkPlan`, `pinBulk`, `parsePrefs`, `ago`), `useHistory` (the three sources merged), `useRecents` (`useRecents`, `useHistoryPrefs`),
+  `Sidebar`, `SidebarMenus` (`SortGroupMenu`, `KindChips`, `RowMenu`), `recents` (`Item`, `stateLabel`).
+- `components/agent/convos.ts` (pure apart from the storage it is handed): `titleOf`, `kindsOf`, `statusOf`, `trimRun`, `sigOf`, `bodyOf`, `saveConvo`, `loadConvo`, `readIndex`, `renameConvo`, `removeConvos`. `AgentProvider` adds `convoId`, `openConvo`, `deleteConvos`, `renameConvo` and `send(message, { chat })`.
+- `lib/automations/`: `kinds` (`KINDS`, `KIND_INFO`, `IDEAS`, `TEAM_OF`, `MAX_HEAVY_ON`, `kindOf`, `countFor`, `dailyCapFor`, `timeoutFor`, `staleFor`), `core` (`Spec` with `kind` and `count`, `heavyOn`, `heavyRoom`, `asksForSchedule`), `run` (`framePrompt` by kind, `previousReport`, `parseWatch`, `watchTask`, `RunDeps.arena`),
+  `public` (`toBrief`, `PublicBrief`), `presets` (`presetsFor`, the weekly preset), `store` (the heavy cap). `app/api/automations` takes `?brief=1`.
+- `components/automations/`: `AutomationsView` (centered form, `KindMenu`, ideas, the list below), `PalStack` (`memberName`).
+
+## Effort, orbs, context and suggestions (D-HISTORY)
+- `components/orbs/`: `effort` (`EFFORT_THEME`, `effortOf`, `growStyle`), `EffortContext` (`EffortProvider`, `useEffort`); `Orbs` takes an optional `level`. `components/ui/live-orb.tsx` takes `style`.
+- `lib/usage/`: `tokens` (`estimateTokens`, `messagesTokens`, `usageFor`, `WINDOWS`, `contextWindow`, `formatTokens`, `percentLabel`, `fillOf`, `MAIN_BASELINE_TOKENS`), `rings` (`ringsFor`, `Ring`). `lib/computer/model.ts` yields the `usage` event (`usageEvent`) and `ModelResult.usage`; `run.ts` folds it into `Run.usage`.
+- `components/agent/`: `ContextRings` (`ringHeadline`, `ringSource`), `suggestions` (`SUGGESTIONS_BY_MODE`, `suggestionsFor`, `startsAtOnce`, `SUGGESTION_CAPTION`), `prompt-model` (`FILL_EVENT`, `fillPrompt`).

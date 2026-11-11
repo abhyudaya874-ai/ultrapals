@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAILY_RUN_CAP, STALE_RUN_MS, Spec, asksForSchedule, canStart, describeSchedule, isDue, newAutomation, nextRunAfter, parseSchedule, scheduleNext, type Schedule } from "./core";
+import { DAILY_RUN_CAP, STALE_RUN_MS, Spec, asksForSchedule, canStart, describeSchedule, heavyOn, heavyRoom, isDue, newAutomation, nextRunAfter, parseSchedule, scheduleNext, type Schedule } from "./core";
+import { staleFor } from "./kinds";
 
 const at = (iso: string) => Date.parse(iso);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -51,7 +52,70 @@ describe("Spec", () => {
     ["an unknown level", { level: "turbo" }],
     ["an impossible time zone", { tzOffsetMin: 900 }],
   ])("refuses %s", (_n, o) => expect(Spec.safeParse({ name: "n", prompt: "do something", schedule: { kind: "every", minutes: 60 }, ...o }).success).toBe(false));
-  it("fills the defaults", () => expect(spec()).toMatchObject({ level: "standard", enabled: true, tzOffsetMin: 0 }));
+  it("fills the defaults", () => expect(spec()).toMatchObject({ level: "standard", enabled: true, tzOffsetMin: 0, kind: "task" }));
+});
+
+describe("Spec by kind", () => {
+  const mk = (o: Record<string, unknown>) => Spec.safeParse({ name: "n", prompt: "do something", schedule: { kind: "every", minutes: 360 }, ...o });
+  it("an automation written before kinds existed is a Team task", () => {
+    const old = { name: "Old", prompt: "Open the proctor artifact", schedule: { kind: "every", minutes: 360 }, tzOffsetMin: 330, level: "standard", enabled: true };
+    expect(Spec.parse(old)).toMatchObject({ kind: "task" });
+  });
+  it("accepts every kind", () => {
+    for (const kind of ["task", "research", "browser", "watch", "rails", "exam", "battle", "loop"]) expect(mk({ kind }).success, kind).toBe(true);
+  });
+  it("refuses a kind that does not exist", () => expect(mk({ kind: "teleport" }).success).toBe(false));
+  it("a Battle or Loop cannot repeat more often than every six hours, and says so", () => {
+    const r = mk({ kind: "battle", schedule: { kind: "every", minutes: 60 } });
+    expect(r.success).toBe(false);
+    expect(!r.success && r.error.issues[0].message).toBe("Battle automations can repeat at most every 6 hours");
+    expect(mk({ kind: "loop", schedule: { kind: "every", minutes: 359 } }).success).toBe(false);
+    expect(mk({ kind: "battle", schedule: { kind: "every", minutes: 360 } }).success).toBe(true);
+    expect(mk({ kind: "battle", schedule: daily(9) }).success).toBe(true); // a daily time is once a day whatever it is
+  });
+  it("a rail check or a deal exam: hourly at the shortest", () => {
+    expect(mk({ kind: "rails", schedule: { kind: "every", minutes: 30 } }).success).toBe(false);
+    expect(mk({ kind: "exam", schedule: { kind: "every", minutes: 60 } }).success).toBe(true);
+  });
+  it("a count is only for a Battle (teams) or a Loop (rounds), within 2 to 4", () => {
+    expect(mk({ kind: "battle", count: 3 }).success).toBe(true);
+    expect(mk({ kind: "loop", count: 4 }).success).toBe(true);
+    expect(mk({ kind: "battle", count: 5 }).success).toBe(false);
+    expect(mk({ kind: "loop", count: 1 }).success).toBe(false);
+    expect(mk({ kind: "task", count: 3 }).success).toBe(false);
+    expect(mk({ kind: "battle" }).success).toBe(true); // absent: the default is used when it runs
+  });
+});
+
+describe("heavy automations (Battles and Loops)", () => {
+  const a = (id: string, kind: "task" | "battle" | "loop", enabled = true) => ({ id, kind, enabled });
+  it("counts only the ones switched on", () => {
+    expect(heavyOn([a("1", "battle"), a("2", "loop", false), a("3", "task")])).toBe(1);
+    expect(heavyOn([a("1", "battle"), a("2", "loop")], "1")).toBe(1);
+  });
+  it("a third one may not be switched on, a second may, and other kinds always may", () => {
+    const two = [a("1", "battle"), a("2", "loop")];
+    expect(heavyRoom(two, { kind: "battle", enabled: true })).toBe(false);
+    expect(heavyRoom(two, { kind: "battle", enabled: false })).toBe(true);
+    expect(heavyRoom(two, { kind: "task", enabled: true })).toBe(true);
+    expect(heavyRoom([a("1", "battle")], { kind: "loop", enabled: true })).toBe(true);
+    expect(heavyRoom(two, { kind: "battle", enabled: true }, "1")).toBe(true); // editing one of the two
+  });
+});
+
+describe("running rules by kind", () => {
+  const heavy = () => newAutomation(spec({ kind: "battle", schedule: { kind: "every", minutes: 360 } }), "b1", at("2026-11-10T10:00:00Z"));
+  it("a Battle may start only three times in a day", () => {
+    const now = at("2026-11-10T12:00:00Z");
+    expect(canStart({ ...heavy(), runLog: [now - 1000, now - 2000] }, now)).toEqual({ ok: true });
+    expect(canStart({ ...heavy(), runLog: [now - 1000, now - 2000, now - 3000] }, now)).toMatchObject({ ok: false, why: "it already ran 3 times in the last 24 hours" });
+  });
+  it("a Battle's claim stays valid longer, because the run itself may last longer", () => {
+    const a = { ...heavy(), runningSince: 1000 };
+    expect(staleFor("battle")).toBeGreaterThan(STALE_RUN_MS);
+    expect(canStart(a, 1000 + STALE_RUN_MS + 1)).toMatchObject({ ok: false, why: "it is already running" });
+    expect(canStart(a, 1000 + staleFor("battle"))).toEqual({ ok: true });
+  });
 });
 
 describe("running rules", () => {
@@ -94,6 +158,8 @@ describe("parseSchedule", () => {
     ["daily at 8:30", daily(8, 30)],
     ["weekdays 18:00", daily(18, 0, [1, 2, 3, 4, 5])],
     ["weekends at 10:15", daily(10, 15, [0, 6])],
+    ["weekly 09:00", daily(9, 0, [1])],
+    ["weekly at 18:30", daily(18, 30, [1])],
   ])("reads %j", (text, want) => expect(parseSchedule(text)).toEqual(want));
   it.each(["every 5 minutes", "every 0 hours", "every 9999 hours", "daily 25:00", "daily 09:60", "whenever", "", "every minute", "mondays 09:00", "every 3 weeks"])("refuses %j rather than guessing", (t) => expect(parseSchedule(t)).toBeNull());
 });
@@ -107,6 +173,24 @@ describe("asksForSchedule", () => {
     "remind me weekly",
     "schedule a weekly digest",
     "automate the sandbox check",
+    "every 6 hours, compare the rails",
+    "each morning, open the page",
+    "every Monday research the news",
+    "run it every other day",
+    "Every day at 9",
+    "check each night",
+    "every 30 minutes",
   ])("%j asks for a schedule", (m) => expect(asksForSchedule(m)).toBe(true));
-  it.each(["compare PayPal and Stripe", "what happened yesterday", "summarise this page", "build a landing page", "everyone wins"])("%j does not", (m) => expect(asksForSchedule(m)).toBe(false));
+  it.each([
+    "compare PayPal and Stripe",
+    "what happened yesterday",
+    "summarise this page",
+    "build a landing page",
+    "everyone wins",
+    "sell reports for a few cents each",
+    "use each one's published fee page",
+    "compare every payment rail",
+    "check every source you can find",
+    "each of them is cheaper",
+  ])("%j does not (the words 'each' and 'every' alone are not a schedule)", (m) => expect(asksForSchedule(m)).toBe(false));
 });

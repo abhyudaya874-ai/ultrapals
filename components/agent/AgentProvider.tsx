@@ -3,10 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DEFAULT_MODE, parseMode, type ArenaMode } from "@/lib/arena/mode";
 import { defaultPlan, type Plan } from "@/lib/arena/plan";
 import type { Attachment, CEvent } from "@/lib/computer/events";
+import { EffortProvider } from "@/components/orbs/EffortContext";
 import { MAX_IMAGES } from "@/lib/computer/images";
 import { DEFAULT_CHOICE, parseChoice, type ModelChoice } from "@/lib/computer/models";
 import { applyCEvent, newRun, parseCStream, type Run } from "@/lib/computer/run";
 import { STORE_KEY, mergeStored, parseStored, type StoredFile } from "./artifact-store";
+import { loadConvo, removeConvos, renameConvo as renameStored, saveConvo, sigOf } from "./convos";
 import { prepareImage, refuseFile, type PendingImage } from "./image-prep";
 import { chunkDelay, expandEvent, paceDelay } from "./pace";
 import { createPump } from "./pump";
@@ -53,12 +55,19 @@ interface AgentCtx {
   handoff: Run["handoff"] | null;
   /** The conversation's id on the server (the live browser's controls talk to the server with it). Null before the first message. */
   sessionId: string | null;
+  /** The saved conversation on screen (it is in the sidebar's history). Null until the first message is sent. */
+  convoId: string | null;
+  /** Opens a saved chat, battle or loop. A Battle or Loop shows its results. False when it can no longer be read. */
+  openConvo: (id: string, opts?: { stage?: boolean }) => boolean;
+  /** Forgets saved conversations. The one on screen, if among them, is closed. */
+  deleteConvos: (ids: string[]) => void;
+  renameConvo: (id: string, title: string) => void;
   /** Puts a freshly opened browser in the corner player. */
   adoptBrowser: (liveViewUrl: string) => void;
   page: { url: string; title: string } | null;
   toggle: (force?: boolean) => void;
-  /** `browse: true` means the message is an instruction for the live browser: the browser agent acts on the page that is already open. */
-  send: (message: string, opts?: { browse?: boolean }) => Promise<void>;
+  /** `browse: true` means the message is an instruction for the live browser: the browser agent acts on the page that is already open. `chat: true` makes it a normal chat run whatever the input's mode is (a job handed over from another page). */
+  send: (message: string, opts?: { browse?: boolean; chat?: boolean }) => Promise<void>;
   stop: () => void;
   newChat: () => void;
   addAttachment: (text: string, path: string) => void;
@@ -96,6 +105,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const SID = "sp-agent-session";
 const MODEL_KEY = "sp-model";
 const MODE_KEY = "sp-mode";
+const CONVO_KEY = "sp-convo-open";
 const MAX_SELECTION = 4000;
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
@@ -117,12 +127,18 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [stored, setStored] = useState<StoredFile[]>([]);
   const [liveViewUrl, setLiveViewUrl] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [convoId, setConvoId] = useState<string | null>(null);
   const [page, setPage] = useState<AgentCtx["page"]>(null);
   const [focusTick, setFocusTick] = useState(0);
   const session = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const running = useRef(false);
   const savedSig = useRef("");
+  const convoRef = useRef<string | null>(null);
+  const convoSig = useRef("");
+  const runsRef = useRef<Run[]>([]);
+  /** Bumped when the conversation on screen is replaced, so events still arriving for the one left behind are not shown in the new one. */
+  const generation = useRef(0);
 
   useEffect(() => {
     session.current = sessionStorage.getItem(SID);
@@ -149,6 +165,43 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, [runs]);
+
+  useEffect(() => { runsRef.current = runs; }, [runs]);
+
+  /** Writes the conversation on screen into this browser, where the sidebar lists it. Skips the write when nothing that is saved has changed. */
+  const persist = useCallback(() => {
+    const rs = runsRef.current;
+    if (rs.length === 0) return;
+    const sig = sigOf(rs);
+    if (sig === convoSig.current) return;
+    let id = convoRef.current;
+    if (!id) {
+      id = crypto.randomUUID();
+      convoRef.current = id;
+      setConvoId(id);
+      try { sessionStorage.setItem(CONVO_KEY, id); } catch { /* not remembered across a reload */ }
+    }
+    try {
+      if (saveConvo(localStorage, { id, runs: rs, sessionId: session.current }, Date.now())) {
+        convoSig.current = sig;
+        window.dispatchEvent(new Event("convos:changed"));
+      }
+    } catch {
+      /* storage is unavailable (private mode): the conversation stays on screen, it is just not remembered */
+    }
+  }, []);
+  // A message was sent: the conversation shows in the sidebar at once. While a run goes on the saved copy follows it every few seconds, and the moment it ends it is saved.
+  useEffect(() => { if (runs.length) persist(); }, [runs.length, persist]);
+  useEffect(() => {
+    if (!busy) { persist(); return; }
+    const t = setInterval(persist, 4000);
+    return () => clearInterval(t);
+  }, [busy, persist]);
+  useEffect(() => {
+    const f = () => persist();
+    window.addEventListener("pagehide", f);
+    return () => window.removeEventListener("pagehide", f);
+  }, [persist]);
 
   const toggle = useCallback((force?: boolean) => {
     setOpen((o) => {
@@ -247,6 +300,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setRuns((r) => [...r, newRun(id, text, atts, pics.map((p) => ({ id: p.id, name: p.name, url: p.url })))]);
     setBusy(true);
     const ctl = (abort.current = new AbortController());
+    const gen = generation.current;
     const patch = (f: (r: Run) => Run) => setRuns((rs) => rs.map((r) => (r.id === id ? f(r) : r)));
     const fail = (m: string) => patch((r) => applyCEvent(r, { kind: "error", message: m }));
     const post = (sessionId: string | null) =>
@@ -282,6 +336,8 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       let firstFile = true;
       let contest = false; // a Battle or Loop shows its own screen, so its report files do not open tabs by themselves
       const show = (e: CEvent) => {
+        if (gen !== generation.current) return; // the person has moved to another conversation: what this one still sends is not for the screen
+        if (e.kind === "step" && e.state === "ok" && e.label.startsWith("Created automation")) window.dispatchEvent(new Event("automations:changed"));
         if (e.kind === "handoff") setPipState({ open: true, expanded: true }); // the browser is theirs now: show it big, in take-over
         if (e.kind === "arena") { contest = true; setStage({ open: true, runId: id }); }
         else if (e.kind === "workspace") {
@@ -324,6 +380,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     } finally {
       running.current = false;
       setBusy(false);
+      window.dispatchEvent(new Event("promises:changed")); // a run may have made a promise
     }
   }, [attachments, images, model]);
 
@@ -351,9 +408,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     }
   }, [model]);
 
-  const send = useCallback(async (message: string, opts?: { browse?: boolean }) => {
+  const send = useCallback(async (message: string, opts?: { browse?: boolean; chat?: boolean }) => {
     if (running.current) return;
-    if (opts?.browse) return run(message, DEFAULT_MODE, undefined, opts); // an instruction for the live browser is always a normal run
+    if (opts?.browse || opts?.chat) return run(message, DEFAULT_MODE, undefined, opts?.browse ? { browse: true } : undefined); // an instruction for the live browser, or a job handed over, is always a normal run
     if (mode.kind !== "chat" && mode.plan !== "auto") {
       if (message.trim().length >= 2) await beginPlan(message, mode);
       return;
@@ -371,14 +428,20 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
-  const newChat = useCallback(() => {
+  /** Empties the screen for another conversation (or none). The cloud computer of the one left behind is ended: it bills while alive. */
+  const leave = useCallback((keepSession?: string | null) => {
+    generation.current++;
     abort.current?.abort();
     const sid = session.current;
     session.current = null;
     sessionStorage.removeItem(SID);
     setSessionId(null);
-    if (sid) void fetch(`/api/agent?sessionId=${sid}`, { method: "DELETE" }).catch(() => undefined);
+    if (sid && sid !== keepSession) void fetch(`/api/agent?sessionId=${sid}`, { method: "DELETE" }).catch(() => undefined);
     planTicket.current++;
+    convoRef.current = null;
+    convoSig.current = "";
+    setConvoId(null);
+    try { sessionStorage.removeItem(CONVO_KEY); } catch { /* nothing to forget */ }
     setPendingPlan(null);
     setStage({ open: false, runId: null });
     setDrafts([]);
@@ -393,10 +456,63 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setLocalFiles({});
   }, []);
 
+  const newChat = useCallback(() => {
+    persist();
+    leave();
+  }, [persist, leave]);
+
+  const openConvo = useCallback((id: string, opts?: { stage?: boolean }): boolean => {
+    if (convoRef.current === id) {
+      const last = runsRef.current.at(-1);
+      if (opts?.stage !== false && last?.arena) setStage({ open: true, runId: last.id });
+      return true;
+    }
+    let c: ReturnType<typeof loadConvo> = null;
+    try { c = loadConvo(localStorage, id); } catch { /* unreadable: treated as gone */ }
+    if (!c) return false;
+    persist();
+    leave(c.sessionId);
+    session.current = c.sessionId;
+    if (c.sessionId) sessionStorage.setItem(SID, c.sessionId);
+    setSessionId(c.sessionId);
+    convoRef.current = id;
+    convoSig.current = sigOf(c.runs);
+    setConvoId(id);
+    try { sessionStorage.setItem(CONVO_KEY, id); } catch { /* not remembered across a reload */ }
+    setRuns(c.runs);
+    const last = c.runs.at(-1);
+    // a Battle or Loop opens on its results; a chat opens as a thread
+    if (opts?.stage !== false && last?.arena) setStage({ open: true, runId: last.id });
+    return true;
+  }, [persist, leave]);
+
+  const deleteConvos = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    if (convoRef.current && ids.includes(convoRef.current)) leave(); // the open one goes without being saved again
+    try { removeConvos(localStorage, ids); } catch { /* nothing was stored */ }
+    window.dispatchEvent(new Event("convos:changed"));
+  }, [leave]);
+
+  const renameConvo = useCallback((id: string, title: string) => {
+    try { renameStored(localStorage, id, title); } catch { /* not stored */ }
+    window.dispatchEvent(new Event("convos:changed"));
+  }, []);
+
+  // After a reload the conversation that was open comes back (its results are not reopened over whatever page this is).
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    try {
+      const id = sessionStorage.getItem(CONVO_KEY);
+      if (id) openConvo(id, { stage: false });
+    } catch { /* nothing to restore */ }
+  }, [openConvo]);
+
   const value = useMemo<AgentCtx>(
     () => ({
       mode, setMode, drafts, pendingPlan, approvePlan, cancelPlan, stage, openStage, closeStage,
-      sessionId, adoptBrowser, handoff: runs.at(-1)?.handoff ?? null,
+      sessionId, convoId, openConvo, deleteConvos, renameConvo, adoptBrowser, handoff: runs.at(-1)?.handoff ?? null,
       open, busy, runs, attachments, images, model, notice, panel, pip, setPip, reorderTabs, localFiles, stored, liveViewUrl, page, focusTick,
       toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles,
       removeAttachment: (id) => setAttachments((a) => a.filter((x) => x.id !== id)),
@@ -412,7 +528,11 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       },
       closeWorkspace: closePanel,
     }),
-    [sessionId, adoptBrowser, mode, setMode, drafts, pendingPlan, approvePlan, cancelPlan, stage, openStage, closeStage, open, busy, runs, attachments, images, model, notice, panel, pip, setPip, reorderTabs, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles],
+    [sessionId, convoId, openConvo, deleteConvos, renameConvo, adoptBrowser, mode, setMode, drafts, pendingPlan, approvePlan, cancelPlan, stage, openStage, closeStage, open, busy, runs, attachments, images, model, notice, panel, pip, setPip, reorderTabs, localFiles, stored, liveViewUrl, page, focusTick, toggle, send, stop, newChat, addAttachment, addImages, setModel, openTab, closeTab, closePanel, openApp, openLocalFile, rememberFiles],
   );
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      <EffortProvider value={model.level}>{children}</EffortProvider>
+    </Ctx.Provider>
+  );
 }

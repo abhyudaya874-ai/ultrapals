@@ -4,6 +4,7 @@ import { PRESETS, SUGGESTIONS, buildSchedule, nameFromPrompt, relative } from ".
 
 describe("buildSchedule", () => {
   it.each([["30m", 30], ["1h", 60], ["6h", 360], ["12h", 720]] as const)("%s is an interval of %i minutes and ignores the time", (id, m) => expect(buildSchedule(id, "07:15")).toEqual({ kind: "every", minutes: m }));
+  it("weekly is Mondays at the time", () => expect(buildSchedule("weekly", "07:45")).toEqual({ kind: "daily", hour: 7, minute: 45, days: [1] }));
   it("daily, weekdays and weekends use the time and their days", () => {
     expect(buildSchedule("daily", "18:30")).toEqual({ kind: "daily", hour: 18, minute: 30, days: [0, 1, 2, 3, 4, 5, 6] });
     expect(buildSchedule("weekdays", "8:05")).toEqual({ kind: "daily", hour: 8, minute: 5, days: [1, 2, 3, 4, 5] });
@@ -38,6 +39,9 @@ describe("relative", () => {
 });
 
 describe("SUGGESTIONS", () => {
+  it("covers every kind", () => {
+    expect([...new Set(SUGGESTIONS.map((s) => s.kind))]).toEqual(["task", "research", "browser", "watch", "rails", "exam", "battle", "loop"]);
+  });
   it("each one is a valid prompt length and uses a real preset", () => {
     for (const s of SUGGESTIONS) {
       expect(s.prompt.length).toBeGreaterThan(3);

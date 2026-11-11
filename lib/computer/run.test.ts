@@ -56,3 +56,29 @@ describe("parseCStream", () => {
     expect(r.rest).toBe('data: {"kind":"ans');
   });
 });
+
+describe("applyCEvent: tokens", () => {
+  const use = (agent: string, prompt: number, completion: number, o: Partial<Extract<CEvent, { kind: "usage" }>> = {}): CEvent => ({ kind: "usage", agent, prompt, completion, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq", exact: true, ...o });
+  it("a run with no model call has no usage", () => expect(fold([]).usage).toBeUndefined());
+  it("keeps the latest call of each agent, counts its calls, and adds up every token spent", () => {
+    const r = fold([use("main", 2000, 100), use("browser-1", 900, 60), use("main", 3100, 140, { exact: false })]);
+    expect(r.usage?.byAgent.main).toEqual({ prompt: 3100, completion: 140, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq", exact: false, calls: 2 });
+    expect(r.usage?.byAgent["browser-1"]).toMatchObject({ prompt: 900, calls: 1 });
+    expect(r.usage).toMatchObject({ tokens: 2000 + 100 + 900 + 60 + 3100 + 140, calls: 3 });
+  });
+  it("a team in a Battle keeps its own tokens, apart from the others and from the run around them", () => {
+    const r = fold([
+      { kind: "arena", mode: "battle", plan: "auto", scenario: "s", question: "q?", max: 2, adaptive: false, contenders: [{ id: "c1", name: "A", persona: "p", stance: "s", tool: "research" }, { id: "c2", name: "B", persona: "p", stance: "s", tool: "research" }] },
+      { kind: "contender", id: "c1", e: use("main", 5000, 200) },
+      { kind: "contender", id: "c2", e: use("main", 1200, 80) },
+      { kind: "contender", id: "c1", e: use("main", 7000, 300) },
+    ]);
+    expect(r.arena?.contenders[0].run.usage?.byAgent.main).toMatchObject({ prompt: 7000, calls: 2 });
+    expect(r.arena?.contenders[1].run.usage?.byAgent.main).toMatchObject({ prompt: 1200, calls: 1 });
+    expect(r.usage).toBeUndefined();
+  });
+  it("is not changed by any other event", () => {
+    const r = fold([use("main", 10, 5), { kind: "answer", delta: "hi" }, { kind: "done", used: [], model: "m", ms: 1 }]);
+    expect(r.usage?.tokens).toBe(15);
+  });
+});

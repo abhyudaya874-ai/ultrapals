@@ -82,6 +82,25 @@ export interface AgentRow {
   terms: TermBlock[];
   files: FileEdit[];
 }
+/** The latest model call of one agent: what the model was given and wrote, and how much it can hold. */
+export interface UsageNote {
+  prompt: number;
+  completion: number;
+  window: number;
+  model: string;
+  provider: string;
+  /** Counted by the provider (true) or estimated from the text (false). */
+  exact: boolean;
+  /** How many calls this agent has made in the run. */
+  calls: number;
+}
+export interface RunUsage {
+  /** The latest call of each agent ("main" is UltraPal). A prompt plus its reply is how much of the model's window that agent is using now. */
+  byAgent: Record<string, UsageNote>;
+  /** Tokens spent by every call in the run, prompts and replies. */
+  tokens: number;
+  calls: number;
+}
 export interface Message {
   id: string;
   from: string;
@@ -124,6 +143,8 @@ export interface Run {
   arena?: ArenaState;
   /** Set when the browser agent stopped for the person (a CAPTCHA, a sign-in): what they have to do and where. */
   handoff?: { reason: string; need: "captcha" | "login" | "verification" | "asked"; url: string; agent: string };
+  /** Tokens: the latest call of each agent and the total. Built only from `usage` events. */
+  usage?: RunUsage;
   /** Every search made and page read by any agent, in order. Perplexity-style "sites searched". */
   visits: Visit[];
   spawns: SpawnNote[];
@@ -163,6 +184,12 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       return onAgent(r, e.agent, (a) => ({ ...a, steps: upsert(a.steps, { id: e.id, label: e.label, state: e.state, detail: e.detail, ms: e.ms }) }));
     case "reasoning":
       return onAgent(r, e.agent, (a) => ({ ...a, reasoning: a.reasoning + e.delta }));
+    case "usage": {
+      const cur = r.usage ?? { byAgent: {}, tokens: 0, calls: 0 };
+      const prev = cur.byAgent[e.agent];
+      const note: UsageNote = { prompt: e.prompt, completion: e.completion, window: e.window, model: e.model, provider: e.provider, exact: e.exact, calls: (prev?.calls ?? 0) + 1 };
+      return { ...r, usage: { byAgent: { ...cur.byAgent, [e.agent]: note }, tokens: cur.tokens + e.prompt + e.completion, calls: cur.calls + 1 } };
+    }
     case "term":
       return onAgent(r, e.agent, (a) => {
         const prev = a.terms.find((t) => t.id === e.id);

@@ -1,11 +1,14 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { KEEP_RUNS, MAX_AUTOMATIONS, Spec, canStart, newAutomation, scheduleNext, type Automation, type RunSummary } from "./core";
+import { KEEP_RUNS, MAX_AUTOMATIONS, Spec, canStart, heavyRoom, newAutomation, scheduleNext, type Automation, type RunSummary } from "./core";
+import { MAX_HEAVY_ON } from "./kinds";
 
 export interface StoreIO {
   read(): Promise<string | null>;
   write(text: string): Promise<void>;
 }
+/** The words for refusing a third Battle or Loop to be switched on. */
+export const heavyReason = (): string => `at most ${MAX_HEAVY_ON} Battle or Loop automations can be on at once (each run opens a cloud computer per team); pause one first`;
 export type Claim = { ok: true; automation: Automation } | { ok: false; why: string };
 
 const RUN_FIELDS = (r: unknown): r is RunSummary => !!r && typeof r === "object" && typeof (r as RunSummary).id === "string" && typeof (r as RunSummary).atMs === "number" && Array.isArray((r as RunSummary).files);
@@ -56,6 +59,7 @@ export function createStore(io: StoreIO, genId: () => string) {
     create: (spec: Spec, now: number): Promise<{ ok: true; automation: Automation } | { ok: false; reason: string }> =>
       mutate<{ ok: true; automation: Automation } | { ok: false; reason: string }>((list) => {
         if (list.length >= MAX_AUTOMATIONS) return { list, out: { ok: false as const, reason: `at most ${MAX_AUTOMATIONS} automations; delete one first` } };
+        if (!heavyRoom(list, spec)) return { list, out: { ok: false as const, reason: heavyReason() } };
         const a = newAutomation(spec, genId(), now);
         return { list: [...list, a], out: { ok: true as const, automation: a } };
       }),
@@ -64,7 +68,7 @@ export function createStore(io: StoreIO, genId: () => string) {
         const cur = one(list, id);
         if (!cur) return { list, out: null };
         const merged = Spec.safeParse({ ...cur, ...patch });
-        if (!merged.success) return { list, out: null };
+        if (!merged.success || !heavyRoom(list, merged.data, id)) return { list, out: null };
         const next: Automation = { ...cur, ...merged.data };
         next.nextRunMs = next.enabled ? (patch.schedule || patch.tzOffsetMin !== undefined || !cur.enabled ? scheduleNext(next, now) : cur.nextRunMs) : null;
         return { list: list.map((a) => (a.id === id ? next : a)), out: next };

@@ -1,15 +1,16 @@
 import { z } from "zod";
 import { LEVELS } from "@/lib/computer/models";
+import { DEFAULT_KIND, KINDS, KIND_INFO, MAX_HEAVY_ON, dailyCapFor, staleFor } from "./kinds";
 
-/** Hard limits. An automation runs agents with nobody watching, so every one of these is a spending and safety bound. */
+/** Hard limits. An automation runs agents with nobody watching, so every one of these is a spending and safety bound. Each kind has tighter ones of its own (kinds.ts). */
 export const MAX_AUTOMATIONS = 8;
 export const MIN_EVERY_MINUTES = 30;
 export const MAX_EVERY_MINUTES = 7 * 24 * 60;
-export const DAILY_RUN_CAP = 12;
+export const DAILY_RUN_CAP = dailyCapFor(DEFAULT_KIND);
 export const KEEP_RUNS = 10;
-export const RUN_TIMEOUT_MS = 8 * 60_000;
+export const RUN_TIMEOUT_MS = KIND_INFO[DEFAULT_KIND].timeoutMs;
 /** A run claimed longer ago than this is treated as dead (the server restarted mid-run) and may be started again. */
-export const STALE_RUN_MS = RUN_TIMEOUT_MS + 2 * 60_000;
+export const STALE_RUN_MS = staleFor(DEFAULT_KIND);
 const DAY = 86_400_000;
 
 export const Schedule = z.discriminatedUnion("kind", [
@@ -19,16 +20,36 @@ export const Schedule = z.discriminatedUnion("kind", [
 ]);
 export type Schedule = z.infer<typeof Schedule>;
 
-export const Spec = z.object({
-  name: z.string().trim().min(1).max(60),
-  prompt: z.string().trim().min(3).max(1500),
-  schedule: Schedule,
-  /** Minutes east of UTC at creation (what `-new Date().getTimezoneOffset()` gives in the browser). */
-  tzOffsetMin: z.number().int().min(-840).max(840).default(0),
-  level: z.enum(LEVELS).default("standard"),
-  enabled: z.boolean().default(true),
-});
+export const Spec = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    prompt: z.string().trim().min(3).max(1500),
+    schedule: Schedule,
+    /** Minutes east of UTC at creation (what `-new Date().getTimezoneOffset()` gives in the browser). */
+    tzOffsetMin: z.number().int().min(-840).max(840).default(0),
+    level: z.enum(LEVELS).default("standard"),
+    enabled: z.boolean().default(true),
+    /** What the automation is (kinds.ts). Files written before kinds existed have none: they are Team tasks. */
+    kind: z.enum(KINDS).default(DEFAULT_KIND),
+    /** A Battle's teams or a Loop's rounds. Other kinds have none. */
+    count: z.number().int().min(2).max(6).optional(),
+  })
+  .superRefine((s, ctx) => {
+    const info = KIND_INFO[s.kind];
+    if (s.schedule.kind === "every" && s.schedule.minutes < info.minMinutes) {
+      ctx.addIssue({ code: "custom", path: ["schedule"], message: `${info.label} automations can repeat at most every ${describeSchedule({ kind: "every", minutes: info.minMinutes }).toLowerCase().replace("every ", "")}` });
+    }
+    if (s.count !== undefined) {
+      if (!info.count) ctx.addIssue({ code: "custom", path: ["count"], message: `${info.label} automations do not take a count` });
+      else if (s.count < info.count.min || s.count > info.count.max) ctx.addIssue({ code: "custom", path: ["count"], message: `${info.count.label.toLowerCase()} must be ${info.count.min} to ${info.count.max}` });
+    }
+  });
 export type Spec = z.infer<typeof Spec>;
+
+/** Pure. How many of these are heavy (a Battle or a Loop) and switched on, not counting `exceptId`. */
+export const heavyOn = (list: readonly Pick<Automation, "id" | "kind" | "enabled">[], exceptId?: string): number => list.filter((a) => a.id !== exceptId && a.enabled && KIND_INFO[a.kind].heavy).length;
+/** Pure. May a heavy automation be switched on without passing MAX_HEAVY_ON? Other kinds always may. */
+export const heavyRoom = (list: readonly Pick<Automation, "id" | "kind" | "enabled">[], next: Pick<Spec, "kind" | "enabled">, exceptId?: string): boolean => !(KIND_INFO[next.kind].heavy && next.enabled) || heavyOn(list, exceptId) < MAX_HEAVY_ON;
 
 export interface RunSummary {
   id: string;
@@ -42,6 +63,10 @@ export interface RunSummary {
   files: { path: string; content: string }[];
   sources: { title: string; url: string }[];
   model?: string;
+  /** A page stopped the browser (a CAPTCHA, a sign-in) and nobody was there to help. What it said; the task can be run again with a person watching. */
+  blocked?: string;
+  /** Page watch: what this run found compared with the one before. */
+  watch?: "baseline" | "changed" | "unchanged";
 }
 export interface Automation extends Spec {
   id: string;
@@ -95,8 +120,9 @@ export const runsInLastDay = (a: Pick<Automation, "runLog">, now: number): numbe
 
 /** Pure. May this automation start a run now? Says why not, in words a person can read. */
 export function canStart(a: Automation, now: number): { ok: true } | { ok: false; why: string } {
-  if (a.runningSince !== undefined && now - a.runningSince < STALE_RUN_MS) return { ok: false, why: "it is already running" };
-  if (runsInLastDay(a, now) >= DAILY_RUN_CAP) return { ok: false, why: `it already ran ${DAILY_RUN_CAP} times in the last 24 hours` };
+  if (a.runningSince !== undefined && now - a.runningSince < staleFor(a.kind)) return { ok: false, why: "it is already running" };
+  const cap = dailyCapFor(a.kind);
+  if (runsInLastDay(a, now) >= cap) return { ok: false, why: `it already ran ${cap} times in the last 24 hours` };
   return { ok: true };
 }
 
@@ -112,7 +138,7 @@ export function newAutomation(spec: Spec, id: string, now: number): Automation {
 
 /** Pure. Words that mean the person asked for something to repeat. UltraPal may only create an automation when the user's own message has one. */
 export const asksForSchedule = (message: string): boolean =>
-  /\b(every|each|daily|weekly|hourly|monthly|nightly|mornings?|evenings?|recurring|schedule[ds]?|automat(?:e|ion|ically)|remind me|on repeat|regularly|keep (?:checking|watching|monitoring))\b/i.test(message);
+  /\b(?:(?:every|each)\s+(?:other\s+|\d+\s*)?(?:minutes?|mins?|hours?|hrs?|days?|mornings?|afternoons?|evenings?|nights?|weeks?|weekdays?|weekends?|months?|mon(?:day)?s?|tue(?:s|sday)?s?|wed(?:nesday)?s?|thu(?:rs|rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)|daily|weekly|hourly|monthly|nightly|mornings?|evenings?|recurring|schedule[ds]?|automat(?:e|ion|ically)|remind me|on repeat|regularly|keep (?:checking|watching|monitoring))\b/i.test(message);
 
 /**
  * Pure. Reads the schedule text a model writes ("every 6 hours", "every 90 minutes", "daily 09:00", "weekdays 8:30", "hourly") into a
@@ -129,9 +155,9 @@ export function parseSchedule(text: string): Schedule | null {
     const r = Schedule.safeParse({ kind: "every", minutes });
     return r.success ? r.data : null;
   }
-  const dl = /^(daily|weekdays|weekends)(?:\s+at)?\s+(\d{1,2}):(\d{2})$/.exec(t);
+  const dl = /^(daily|weekdays|weekends|weekly)(?:\s+at)?\s+(\d{1,2}):(\d{2})$/.exec(t);
   if (dl) {
-    const days = dl[1] === "daily" ? [0, 1, 2, 3, 4, 5, 6] : dl[1] === "weekdays" ? [1, 2, 3, 4, 5] : [0, 6];
+    const days = dl[1] === "daily" ? [0, 1, 2, 3, 4, 5, 6] : dl[1] === "weekdays" ? [1, 2, 3, 4, 5] : dl[1] === "weekly" ? [1] : [0, 6];
     const r = Schedule.safeParse({ kind: "daily", hour: Number(dl[2]), minute: Number(dl[3]), days });
     return r.success ? r.data : null;
   }

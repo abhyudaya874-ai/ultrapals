@@ -154,7 +154,7 @@ export function PromiseSurface(props: SurfaceProps) {
         <TopBar title={props.promise.title} onOutline={() => setOutline((o) => !o)} outlineOpen={outline} />
         <div className="relative min-h-0 flex-1">
           <div ref={scroller} onScroll={stick.onScroll} data-testid="thread" className="h-full overflow-y-auto">
-            <div className="mx-auto w-full max-w-[720px] space-y-6 px-6 pb-44 pt-6">
+            <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-center space-y-6 px-6 pb-8 pt-6">
               <Thread
                 promise={props.promise}
                 trace={trace}

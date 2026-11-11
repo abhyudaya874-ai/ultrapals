@@ -1,4 +1,5 @@
 import type { Schedule } from "./core";
+import { IDEAS, KIND_INFO, KINDS, type Kind } from "./kinds";
 
 export const PRESETS = [
   { id: "30m", label: "Every 30 minutes", timed: false },
@@ -8,11 +9,12 @@ export const PRESETS = [
   { id: "daily", label: "Every day", timed: true },
   { id: "weekdays", label: "Weekdays", timed: true },
   { id: "weekends", label: "Weekends", timed: true },
+  { id: "weekly", label: "Every Monday", timed: true },
 ] as const;
 export type PresetId = (typeof PRESETS)[number]["id"];
 
 const MINUTES: Partial<Record<PresetId, number>> = { "30m": 30, "1h": 60, "6h": 360, "12h": 720 };
-const DAYS: Partial<Record<PresetId, number[]>> = { daily: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6] };
+const DAYS: Partial<Record<PresetId, number[]>> = { daily: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6], weekly: [1] };
 
 /** Pure. The schedule a preset and a "HH:MM" time input stand for. A bad time falls back to 09:00 rather than failing the form. */
 export function buildSchedule(preset: PresetId, time: string): Schedule {
@@ -39,8 +41,11 @@ export function relative(ms: number, now: number): string {
   return d > 0 ? `in ${n} ${unit}` : `${n} ${unit} ago`;
 }
 
-export const SUGGESTIONS: { title: string; blurb: string; prompt: string; preset: PresetId }[] = [
-  { title: "Payment rails watch", blurb: "Re-compare PayPal, Stripe and Square for micro-payments and flag what changed.", prompt: "Compare PayPal, Stripe and Square fees and limits for payments under one dollar. Save the comparison as rails.csv, and say what changed compared with the last run if you can see an earlier rails.csv.", preset: "daily" },
-  { title: "Hackathon opportunity tracker", blurb: "Find new hackathons with a payments or agents track and save them as a CSV.", prompt: "Search for hackathons with a payments, fintech or AI-agents track whose deadline is in the next 30 days. Save them as hackathons.csv with name, deadline, prize and link, and summarise the three best fits.", preset: "weekdays" },
-  { title: "Sandbox health check", blurb: "Open the Proctor artifact and report any new case or changed check.", prompt: "Open the proctor artifact. Report whether any check changed or any case is open, and name the rail and check. If nothing changed, say so in one line.", preset: "6h" },
-];
+/** Pure. The presets a kind may use: an "every N minutes" below the kind's shortest interval is left out (a Battle cannot run every half hour). */
+export function presetsFor(kind: Kind): (typeof PRESETS)[number][] {
+  const min = KIND_INFO[kind].minMinutes;
+  return PRESETS.filter((p) => (MINUTES[p.id] ?? Infinity) >= min);
+}
+
+/** Every idea of every kind, flat. The Automations page shows the ones for the kind that is picked (kinds.ts). */
+export const SUGGESTIONS: { kind: Kind; title: string; blurb: string; prompt: string; preset: PresetId; count?: number }[] = KINDS.flatMap((kind) => IDEAS[kind].map((i) => ({ kind, ...i })));

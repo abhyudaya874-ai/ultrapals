@@ -22,6 +22,45 @@ describe("parseDb", () => {
   });
 });
 
+describe("old files", () => {
+  it("an automation saved before kinds existed loads as a Team task", () => {
+    const old = JSON.stringify({ automations: [{ name: "Old", prompt: "Open the proctor artifact", schedule: { kind: "every", minutes: 360 }, tzOffsetMin: 330, level: "standard", enabled: true, id: "7c9577f2-389f-46ba-82ed-c82185dd8d25", createdAtMs: 1, nextRunMs: 2, lastRunMs: 3, runLog: [3], runs: [] }] });
+    expect(parseDb(old)).toMatchObject([{ id: "7c9577f2-389f-46ba-82ed-c82185dd8d25", kind: "task", name: "Old" }]);
+  });
+  it("an entry with a kind the code does not know is dropped, not run as something else", () => {
+    const bad = JSON.stringify({ automations: [{ name: "X", prompt: "do it please", schedule: { kind: "every", minutes: 360 }, kind: "teleport", id: "x", createdAtMs: 1 }] });
+    expect(parseDb(bad)).toEqual([]);
+  });
+});
+
+describe("heavy automations in the store", () => {
+  const battle = (o: Partial<Spec> = {}) => spec({ kind: "battle", schedule: { kind: "every", minutes: 360 }, ...o });
+  it("allows two Battles or Loops to be on, refuses a third, and counts only the ones that are on", async () => {
+    const s = mk();
+    expect(await s.create(battle(), 0)).toMatchObject({ ok: true });
+    expect(await s.create(spec({ kind: "loop", schedule: { kind: "every", minutes: 360 } }), 0)).toMatchObject({ ok: true });
+    const third = await s.create(battle(), 0);
+    expect(third).toMatchObject({ ok: false, reason: expect.stringContaining("at most 2 Battle or Loop automations") });
+    expect(await s.create(battle({ enabled: false }), 0)).toMatchObject({ ok: true }); // a paused one is allowed
+    expect(await s.create(spec(), 0)).toMatchObject({ ok: true }); // other kinds are not limited by it
+  });
+  it("switching a paused one back on is refused while two are on", async () => {
+    const s = mk();
+    await s.create(battle(), 0);
+    await s.create(battle(), 0);
+    await s.create(battle({ enabled: false }), 0); // a3
+    expect(await s.update("a3", { enabled: true }, 5)).toBeNull();
+    expect((await s.get("a3"))?.enabled).toBe(false);
+    await s.update("a1", { enabled: false }, 6);
+    expect(await s.update("a3", { enabled: true }, 7)).toMatchObject({ enabled: true });
+  });
+  it("a Battle cannot be given an interval shorter than six hours afterwards either", async () => {
+    const s = mk();
+    await s.create(battle(), 0);
+    expect(await s.update("a1", { schedule: { kind: "every", minutes: 60 } }, 1)).toBeNull();
+  });
+});
+
 describe("store", () => {
   it("creates, lists, updates and removes", async () => {
     const s = mk();
