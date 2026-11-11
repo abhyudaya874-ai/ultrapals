@@ -197,7 +197,7 @@ export function PromiseSurface(props: SurfaceProps) {
         )}
       </section>
       {pane.kind !== "closed" && (
-        <div ref={paneRef} className="fixed inset-0 z-50 bg-canvas p-2 lg:static lg:z-auto lg:bg-transparent lg:p-5">
+        <div ref={paneRef} className="sheet-in fixed inset-0 z-50 bg-canvas p-2 lg:static lg:z-auto lg:bg-transparent lg:p-5">
             <Pane
               pane={pane}
               groups={view.groups}

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { IconArrowUp } from "@/components/ui/icons";
+import { NEAR_END, needsJump, nextAway } from "./stick";
 
 export function Dock(p: {
   statusLine: string; manual?: React.ReactNode; menu?: React.ReactNode;
@@ -34,16 +35,23 @@ export function useDismiss<T extends HTMLElement>(open: boolean, onClose: () => 
   }, [open, onClose, ref]);
 }
 
-/** Follow new rows only while the reader is near the bottom; otherwise show the round "jump" button (S1). */
-export function useStickToBottom<T extends HTMLElement>(ref: RefObject<T | null>, dep: number) {
+/**
+ * Follow new text only while the reader is at the end. Scrolling up stops it (and shows the round "jump" button on a thread); scrolling
+ * back to the end starts it again by itself. `dep` is anything that grows with the content; `slack` is how near the end counts as the end.
+ */
+export function useStickToBottom<T extends HTMLElement>(ref: RefObject<T | null>, dep: number, slack: number = NEAR_END) {
   const [away, setAway] = useState(false);
+  const caused = useRef(false); // our own jump to the end is about to raise a scroll event; it is not the reader leaving
   useEffect(() => {
     const el = ref.current;
-    if (el && !away) el.scrollTo({ top: el.scrollHeight });
+    if (!el || away || !needsJump(el)) return;
+    caused.current = true;
+    el.scrollTo({ top: el.scrollHeight });
+    requestAnimationFrame(() => { caused.current = false; }); // scroll events run before the next frame's callbacks
   }, [ref, dep, away]);
   const onScroll = () => {
     const el = ref.current;
-    if (el) setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 80);
+    if (el) setAway((prev) => nextAway(prev, el, caused.current, slack));
   };
   return { away, onScroll, jump: () => { ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" }); setAway(false); } };
 }

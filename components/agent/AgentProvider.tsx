@@ -361,6 +361,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       );
       const push = (events: CEvent[]) => {
         for (const e of events) {
+          // Token counts are not part of the show. They take effect the moment they arrive, so the context ring never trails the stream
+          // behind a queue of paced steps and files (the reducer keeps them apart from every other event).
+          if (e.kind === "usage" || e.kind === "usage_live") { show(e); continue; }
           const parts = expandEvent(e);
           pump.push(parts.map((p) => ({ e: p, split: parts.length > 1 })));
         }

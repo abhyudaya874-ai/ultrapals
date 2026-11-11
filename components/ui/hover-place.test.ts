@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placeCard } from "./hover-place";
+import { anchorVisible, placeCard, sameSpot } from "./hover-place";
 
 const vp = { w: 1200, h: 800 };
 const at = (left: number, top: number, width = 60, height = 20) => ({ left, top, width, height });
@@ -49,5 +49,34 @@ describe("placeCard beside", () => {
   it("never starts above the viewport or too low to read", () => {
     expect(placeCard(at(100, -50, 220, 70), 320, vp, "right").top).toBe(8);
     expect(placeCard(at(100, 790, 220, 70), 320, vp, "right").top).toBe(800 - 8 - 120);
+  });
+});
+
+describe("sameSpot: a card does not move when its trigger has not", () => {
+  const a = placeCard(at(500, 400), 300, vp, "top");
+  it("is true for the same placement, and for one a fraction of a pixel away", () => {
+    expect(sameSpot(a, placeCard(at(500, 400), 300, vp, "top"))).toBe(true);
+    expect(sameSpot(a, placeCard(at(500.3, 400.2), 300, vp, "top"))).toBe(true);
+  });
+  it("is false when the trigger moved (the page scrolled or the text above it grew)", () => {
+    expect(sameSpot(a, placeCard(at(500, 380), 300, vp, "top"))).toBe(false);
+    expect(sameSpot(a, placeCard(at(540, 400), 300, vp, "top"))).toBe(false);
+  });
+  it("is false when the card flipped to the other side", () => {
+    expect(sameSpot(a, placeCard(at(500, 20), 300, vp, "top"))).toBe(false);
+  });
+});
+
+describe("anchorVisible: a card follows its trigger until the trigger is gone", () => {
+  it("is true while any part of the trigger is on screen", () => {
+    expect(anchorVisible(at(500, 400), vp)).toBe(true);
+    expect(anchorVisible(at(-30, 400), vp)).toBe(true); // half off the left edge
+    expect(anchorVisible(at(500, 790), vp)).toBe(true); // half off the bottom
+  });
+  it("is false once it has scrolled fully out of view", () => {
+    expect(anchorVisible(at(500, -40), vp)).toBe(false);
+    expect(anchorVisible(at(500, 810), vp)).toBe(false);
+    expect(anchorVisible(at(-80, 400), vp)).toBe(false);
+    expect(anchorVisible(at(1210, 400), vp)).toBe(false);
   });
 });

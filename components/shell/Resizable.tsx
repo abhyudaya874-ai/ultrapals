@@ -3,11 +3,22 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Keyb
 import { IconChevronRight } from "@/components/ui/icons";
 import { LIMITS, dragPanel, keyPanel, parsePref, type PanelPref, type Side } from "./layout";
 
+/** What a docked panel's element carries: the width variable (at the `lg` breakpoint only; small screens use drawers and overlays) and the flags `.slide-w` reads. */
+export interface PanelAttrs {
+  style: CSSProperties;
+  "data-ready": "true" | "false";
+  "data-dragging": "true" | "false";
+  "data-folded": "true" | "false";
+  "data-side": Side;
+}
+
 export interface Resizable {
   pref: PanelPref;
   width: number;
   collapsed: boolean;
   dragging: boolean;
+  /** True a moment after the saved width has been read and painted. Panels animate only from then on, so a reload does not slide from the default width to the saved one. */
+  ready: boolean;
   setCollapsed: (c: boolean) => void;
   /** Spread onto the `ResizeHandle`. */
   handle: {
@@ -18,8 +29,8 @@ export interface Resizable {
     onDoubleClick: () => void;
     onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void;
   };
-  /** CSS variable carrying the width, applied at the `lg` breakpoint only (small screens use drawers and overlays). */
-  style: CSSProperties;
+  /** Spread onto the panel element (`<aside {...r.attrs}>`). */
+  attrs: PanelAttrs;
 }
 
 /**
@@ -33,13 +44,24 @@ export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
   const rootVar = `--pw-${name}`;
   const [pref, setPref] = useState<PanelPref>({ w: l.def, collapsed: false });
   const [dragging, setDragging] = useState(false);
+  const [ready, setReady] = useState(false);
   const start = useRef<{ x: number; pref: PanelPref } | null>(null);
   const live = useRef<PanelPref | null>(null);
   const latest = useRef(pref);
   latest.current = pref;
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     try { setPref(parsePref(localStorage.getItem(key), l)); } catch { /* defaults */ }
+    setLoaded(true);
   }, [key, l]);
+  // `loaded` turns true in the very render that carries the saved size, so this effect starts after that size is in the page. A timer set any earlier
+  // can fire before a slow render commits, and then the size and the permission to animate arrive together and the panel glides from the default.
+  useEffect(() => {
+    if (!loaded) return;
+    let second = 0;
+    const first = requestAnimationFrame(() => { second = requestAnimationFrame(() => setReady(true)); });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
+  }, [loaded]);
   const save = useCallback((p: PanelPref) => { try { localStorage.setItem(key, JSON.stringify(p)); } catch { /* not remembered */ } }, [key]);
   const set = useCallback((p: PanelPref) => { setPref(p); save(p); }, [save]);
 
@@ -58,6 +80,7 @@ export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
     width: pref.w,
     collapsed: pref.collapsed,
     dragging,
+    ready,
     setCollapsed: (c) => set({ ...latest.current, collapsed: c }),
     handle: {
       onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); start.current = { x: e.clientX, pref: latest.current }; setDragging(true); },
@@ -74,7 +97,13 @@ export function useResizable(name: keyof typeof LIMITS, side: Side): Resizable {
       onDoubleClick: () => set({ ...latest.current, collapsed: !latest.current.collapsed }),
       onKeyDown: (e) => { const n = keyPanel(latest.current, e.key, side, l); if (n) { e.preventDefault(); set(n); } },
     },
-    style: { "--panel-w": `var(${rootVar}, ${pref.w}px)` } as CSSProperties,
+    attrs: {
+      style: { "--panel-w": `var(${rootVar}, ${pref.w}px)` } as CSSProperties,
+      "data-ready": ready ? "true" : "false",
+      "data-dragging": dragging ? "true" : "false",
+      "data-folded": pref.collapsed ? "true" : "false",
+      "data-side": side,
+    },
   };
 }
 
@@ -100,8 +129,11 @@ export function ResizeHandle({ r, label, side }: { r: Resizable; label: string; 
   );
 }
 
-/** What a collapsed panel leaves behind: a thin rail with its title written vertically, like a docked panel in After Effects. */
-export function Rail({ title, badge, onOpen, side }: { title: string; badge?: number; onOpen: () => void; side: Side }) {
+/**
+ * What a collapsed panel leaves behind: a thin rail with its title written vertically, like a docked panel in After Effects. It stays in the page
+ * and grows from nothing when `open` turns true (the panel folded) and shrinks away when it turns false (the panel opened again).
+ */
+export function Rail({ title, badge, open, ready, onOpen, side }: { title: string; badge?: number; open: boolean; ready: boolean; onOpen: () => void; side: Side }) {
   return (
     <button
       type="button"
@@ -109,7 +141,10 @@ export function Rail({ title, badge, onOpen, side }: { title: string; badge?: nu
       aria-label={`Open ${title}`}
       title={`Open ${title}`}
       data-testid={`rail-${title.toLowerCase()}`}
-      className="group hidden w-11 shrink-0 flex-col items-center gap-3 bg-sidebar py-3 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg lg:flex"
+      data-open={open}
+      data-ready={ready}
+      tabIndex={open ? 0 : -1}
+      className="rail group hidden flex-col items-center gap-3 bg-sidebar py-3 text-fg-muted hover:bg-surface-2 hover:text-fg lg:flex"
     >
       <IconChevronRight className={`size-4 transition-transform group-hover:translate-x-0.5 ${side === "right" ? "rotate-180 group-hover:-translate-x-0.5" : ""}`} />
       <span className="text-[11.5px] font-medium uppercase tracking-[0.18em] [writing-mode:vertical-rl]" style={{ transform: side === "right" ? "rotate(180deg)" : undefined }}>{title}</span>

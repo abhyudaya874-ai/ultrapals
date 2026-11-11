@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgent } from "@/components/agent/AgentProvider";
 import { APP_ARTIFACTS } from "@/components/agent/panel-model";
 import { IconBolt, IconBoard, IconClock, IconDollar, IconFile, IconGlobe, IconLayers, IconPlus, IconReturn, IconSearch } from "@/components/ui/icons";
+import { usePresent } from "@/components/ui/presence";
 import type { PublicAutomation } from "@/lib/automations/public";
 import { matchRanges, rank } from "./palette";
 import { stateLabel } from "./recents";
@@ -72,13 +73,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const total = results.length + (asChat ? 1 : 0);
   useEffect(() => { setSel(0); }, [q]);
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-idx="${sel}"]`)?.scrollIntoView({ block: "nearest" }); }, [sel]);
-  if (!open) return null;
+  const present = usePresent(open); // stays on screen for the length of its exit
+  if (!present) return null;
 
   const grouped = ORDER.map((g) => ({ g, items: results.filter((r) => r.group === g) })).filter((x) => x.items.length);
   let idx = -1;
   return (
-    <div className="fade-in fixed inset-0 z-[80] grid place-items-start justify-items-center bg-black/55 px-4 pt-[14vh] backdrop-blur-[2px]" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="palette">
-      <div role="dialog" aria-label="Command palette" className="sheet-in w-full max-w-[600px] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+    <div className={`${open ? "fade-in" : "fade-out pointer-events-none"} fixed inset-0 z-[80] grid place-items-start justify-items-center bg-black/55 px-4 pt-[14vh] backdrop-blur-[2px]`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="palette">
+      <div role="dialog" aria-label="Command palette" className={`${open ? "sheet-in" : "sheet-out"} w-full max-w-[600px] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.6)]`}>
         <div className="flex items-center gap-3 border-b border-line px-4">
           <IconSearch className="size-[18px] shrink-0 text-fg-dim" />
           <input

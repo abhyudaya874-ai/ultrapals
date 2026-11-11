@@ -15,8 +15,8 @@ export function Disclosure({ label, meta, defaultOpen = false, testId, children 
         {meta && <span className="truncate text-fg-dim">{meta}</span>}
         <IconChevronDown className={`ml-auto size-4 shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
-      <div id={id} inert={!open} className={`grid transition-[grid-template-rows] duration-200 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-        <div className="min-h-0 overflow-hidden">{children}</div>
+      <div id={id} inert={!open} className="snap-grow" data-open={open}>
+        <div>{children}</div>
       </div>
     </section>
   );

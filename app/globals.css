@@ -9,8 +9,8 @@
   --color-fg: #dbdee3;
   --color-fg-muted: #979aa0;
   --color-fg-dim: #6f7277;
-  --color-dock: #152226;
-  --color-dock-line: #264249;
+  --color-dock: #1d1f23;
+  --color-dock-line: #34373c;
   --color-accent: #4e99a3;
   --color-ok: #519b53;
   --color-bad: #d2646e;
@@ -48,7 +48,9 @@ body {
 .b-sch-event.pending { background-color: #f59e0b; }
 /* D-UI O4: CSS-only motion, 200ms. Rows of the Process list appear one by one as the agents report in. */
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.rise { animation: rise var(--t) var(--ease) both; }
+/* backwards, not both: an element that keeps a finished transform or opacity animation stays a stacking context, and a row that is one paints its
+   neighbours' text over its own menu. The end state is the normal state anyway. */
+.rise { animation: rise var(--t) var(--ease) backwards; }
 /* The prompt box draws its own focus state (the box border); the global ring would box the text area inside it. */
 textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
 .dock-focus:focus-within { border-color: var(--color-accent); }
@@ -86,3 +88,49 @@ textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
 /* Where two orbs touch in a match: one hairline ring that opens and fades. */
 @keyframes duel-ring { from { opacity: 0.6; transform: translate(-50%, -50%) scale(0.3); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.7); } }
 .duel-ring { animation: duel-ring 360ms var(--ease) both; }
+
+/* Panels (D-SNAP). A panel that is shut stays in the page, out of sight, so opening and closing are one transition that can turn around half way.
+   .slide-w     a docked panel (sidebar, chat, artifacts) from lg up. Only its width moves; its body, .slide-in, keeps the full width and flows past the
+                edge, so nothing inside reflows while the edge sweeps over it. data-open="false" shuts it, data-folded="true" leaves a .rail in its place.
+                data-ready waits until the saved width has been read, so a reload does not slide from the default width to the saved one.
+   .fade-panel  an overlay that fades and rises 8px. .fade-sm is the same for a panel that docks beside the page at lg and covers it below that.
+   .fold-y      a flexible list that folds shut to nothing, so whatever follows it slides up.
+   .scrim       the dimmed backdrop behind a drawer. */
+@media (min-width: 64rem) {
+  .slide-w { width: var(--panel-w); flex-shrink: 0; }
+  .slide-w[data-open="false"], .slide-w[data-folded="true"] { width: 0; visibility: hidden; }
+  .slide-w[data-ready="true"] { transition: width var(--t) var(--ease), visibility 0s; }
+  .slide-w[data-ready="true"][data-open="false"], .slide-w[data-ready="true"][data-folded="true"] { transition: width var(--t) var(--ease), visibility 0s linear var(--t); }
+  .slide-w[data-dragging="true"] { transition: none; }
+  .slide-w[data-side="left"] { display: flex; justify-content: flex-end; }
+  .slide-in { width: var(--panel-w); height: 100%; flex: none; }
+  .rail { flex-shrink: 0; width: 2.75rem; overflow: hidden; }
+  .rail[data-open="false"] { width: 0; visibility: hidden; }
+  .rail[data-ready="true"] { transition: width var(--t) var(--ease), visibility 0s, background-color var(--t-fast), color var(--t-fast); }
+  .rail[data-ready="true"][data-open="false"] { transition: width var(--t) var(--ease), visibility 0s linear var(--t), background-color var(--t-fast), color var(--t-fast); }
+}
+.fade-panel { transition: opacity var(--t) var(--ease), transform var(--t) var(--ease), visibility 0s; }
+.fade-panel[data-open="false"] { opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none; transition: opacity var(--t) var(--ease), transform var(--t) var(--ease), visibility 0s linear var(--t); }
+@media (max-width: 63.99rem) {
+  .fade-sm { transition: opacity var(--t) var(--ease), transform var(--t) var(--ease), visibility 0s; }
+  .fade-sm[data-open="false"] { opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none; transition: opacity var(--t) var(--ease), transform var(--t) var(--ease), visibility 0s linear var(--t); }
+}
+.fold-y { flex: 1 1 0%; min-height: 0; transition: flex-grow var(--t) var(--ease), opacity var(--t) ease-out, visibility 0s; }
+.fold-y[data-open="false"] { flex-grow: 0; opacity: 0; visibility: hidden; overflow: hidden; transition: flex-grow var(--t) var(--ease), opacity var(--t) ease-out, visibility 0s linear var(--t); }
+.scrim { transition: opacity var(--t) ease-out, visibility 0s; }
+.scrim[data-open="false"] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--t) ease-out, visibility 0s linear var(--t); }
+
+/* Leaving: an overlay that unmounts plays one of these first (usePresent keeps it mounted long enough). */
+@keyframes sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(0.99); } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes tab-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: none; } }
+.sheet-out { animation: sheet-out var(--t-fast) var(--ease) both; }
+.fade-out { animation: fade-out var(--t-fast) ease-in both; }
+/* backwards, not both: the tab keeps its own opacity afterwards (it dims while it is dragged) */
+.tab-in { animation: tab-in var(--t) var(--ease) backwards; transform-origin: left center; }
+
+/* Two views in one popover (effort, then models): the new one slides in from the side it was reached from. */
+@keyframes view-next { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes view-prev { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.view-next { animation: view-next var(--t) var(--ease) backwards; }
+.view-prev { animation: view-prev var(--t) var(--ease) backwards; }

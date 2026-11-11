@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Collapse } from "@/components/ui/Collapse";
 import { IconChevronDown, IconFile } from "@/components/ui/icons";
 import type { FileEdit } from "@/lib/computer/run";
 import { useAgent } from "./AgentProvider";
@@ -28,7 +29,7 @@ function Row({ f, open: initial, live }: { f: FileEdit; open: boolean; live: boo
         </button>
         <button type="button" onClick={() => openTab(fileTab(f.path))} className="h-7 shrink-0 rounded-md px-2 text-[12px] text-accent hover:bg-surface-2">Open</button>
       </div>
-      {open && f.patch && <div className="px-2 pb-2"><DiffView lines={f.patch} cut={f.cut} max={INLINE_ROWS} tone={read ? "read" : "diff"} animate={live && initial} /></div>}
+      <Collapse open={open && !!f.patch}>{f.patch && <div className="px-2 pb-2"><DiffView lines={f.patch} cut={f.cut} max={INLINE_ROWS} tone={read ? "read" : "diff"} animate={live && initial} /></div>}</Collapse>
     </li>
   );
 }

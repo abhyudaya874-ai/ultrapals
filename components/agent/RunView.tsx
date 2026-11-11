@@ -10,6 +10,7 @@ import { AnswerText } from "./AnswerText";
 import { ExamPanel } from "./ExamPanel";
 import { SituationPanel } from "./SituationPanel";
 import { SearchedSites } from "./SearchedSites";
+import { Thought } from "./Thought";
 import { AgentOrb } from "@/components/orbs/Orbs";
 import { ArenaSummary } from "@/components/arena/ArenaSummary";
 import { HandoffCard } from "./HandoffCard";
@@ -91,7 +92,7 @@ export function RunView({ run, latest = true }: { run: Run; latest?: boolean }) 
               const a = row.agent;
               return (
                 <li key={a.id} className="rise" style={{ marginLeft: row.depth * 16 }}>
-                  <button type="button" data-testid="agent-row" onClick={() => openWorkspace(a.role === "browser" ? "browser" : a.role === "terminal" ? "terminal" : "agent", a.id)}
+                  <button type="button" data-testid="agent-row" onClick={() => openWorkspace("agent", a.id)}
                     className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13.5px] hover:bg-surface-2">
                     <AgentOrb id={a.id} role={a.role} size={24} live={a.state === "running"} mood={a.state === "error" ? "error" : a.state === "running" ? (a.role === "research" ? "thinking" : "busy") : ("done" as Mood)} />
                     <span className="shrink-0 text-fg">{a.title}</span>
@@ -110,7 +111,7 @@ export function RunView({ run, latest = true }: { run: Run; latest?: boolean }) 
 
       {thinking && (
         <Disclosure key={`t-${run.answer === ""}`} testId="thinking" defaultOpen={running && run.answer === ""} label="Thinking" meta={`${thinking.length} characters`}>
-          <p className="ml-1 max-h-48 overflow-y-auto whitespace-pre-wrap border-l border-line pl-3.5 text-[12.5px] italic leading-relaxed text-fg-dim">{thinking}</p>
+          <Thought text={thinking} testId="thinking-text" className="ml-1 max-h-48 border-l border-line pl-3.5 text-[12.5px]" />
         </Disclosure>
       )}
 

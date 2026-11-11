@@ -8,6 +8,7 @@ import { ContextRings } from "./ContextRings";
 import { ModeBar } from "./ModeBar";
 import { FILL_EVENT, canSend, placeholderFor } from "./prompt-model";
 import { ModelPill } from "./ModelPill";
+import { QuoteDialog } from "./QuoteDialog";
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
@@ -19,6 +20,8 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
   const { busy, send, stop, attachments, removeAttachment, images, drafts, removeImage, addImages, model, setModel, notice, clearNotice, focusTick, mode, pendingPlan, handoff } = useAgent();
   const [text, setText] = useState("");
   const [drag, setDrag] = useState(false);
+  const [quoteId, setQuoteId] = useState<string | null>(null); // the quote chip whose full text is open
+  const quote = attachments.find((a) => a.id === quoteId) ?? null; // removing the quote closes its dialog
   const own = useRef<HTMLTextAreaElement>(null);
   const ref = boxRef ?? own;
   const file = useRef<HTMLInputElement>(null);
@@ -93,7 +96,7 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
               ))}
               {attachments.map((a) => (
                 <li key={a.id} className="chip-in flex max-w-full items-center gap-1.5 self-start rounded-lg bg-surface-2 py-1 pl-2 pr-1 text-[12px] text-fg-muted">
-                  <span className="truncate">“{a.text.replace(/\s+/g, " ").slice(0, 60)}”</span>
+                  <button type="button" onClick={() => setQuoteId(a.id)} title="Show the full quote" aria-haspopup="dialog" data-testid="quote-chip" className="min-w-0 truncate rounded text-left hover:text-fg">“{a.text.replace(/\s+/g, " ").slice(0, 60)}”</button>
                   <button type="button" onClick={() => removeAttachment(a.id)} aria-label="Remove attachment" className="press grid size-5 shrink-0 place-items-center rounded hover:bg-line hover:text-fg"><IconX className="size-3" /></button>
                 </li>
               ))}
@@ -120,8 +123,8 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
           </button>
           <ModeBar disabled={busy} />
           <span className="flex-1" />
-          <ModelPill value={model} onChange={setModel} disabled={busy} />
           <ContextRings draft={text} />
+          <ModelPill value={model} onChange={setModel} disabled={busy} />
           {busy ? (
             <button type="button" onClick={stop} aria-label="Stop" className="press grid size-9 place-items-center rounded-full bg-surface-2 text-fg hover:bg-line"><IconStop className="size-4" /></button>
           ) : (
@@ -130,6 +133,7 @@ export function PromptBox({ variant, placeholder, boxRef }: { variant: "hero" | 
         </div>
       </div>
       {notice && <p role="alert" className="mt-2 px-2 text-[12.5px] text-bad">{notice}</p>}
+      <QuoteDialog quote={quote} onClose={() => setQuoteId(null)} />
     </form>
   );
 }

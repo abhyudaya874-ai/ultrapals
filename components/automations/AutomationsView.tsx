@@ -7,6 +7,7 @@ import { useAgent } from "@/components/agent/AgentProvider";
 import { displayName } from "@/components/agent/panel-model";
 import { ProctorPanel } from "@/components/ProctorPanel";
 import { UltraOrb } from "@/components/orbs/Orbs";
+import { Collapse } from "@/components/ui/Collapse";
 import { Menu, type MenuItem } from "@/components/ui/Menu";
 import { IconAgent, IconArrowDown, IconBattle, IconBolt, IconChevronDown, IconClock, IconDollar, IconFile, IconGlobe, IconLayers, IconLoop, IconPlay, IconSearch, IconTrash } from "@/components/ui/icons";
 import { SiteChip } from "@/components/ui/SiteChip";
@@ -197,7 +198,7 @@ function Card({ a, now, busyId, reload, forceOpen }: { a: PublicAutomation; now:
         </span>
       </div>
       {msg && <p role="alert" className="px-4 pb-3 text-[12.5px] text-bad">{msg}</p>}
-      {open && (
+      <Collapse open={open}>
         <div className="space-y-4 border-t border-line p-4">
           <div>
             <h3 className="text-[12px] font-medium uppercase tracking-wide text-fg-dim">{info.label}</h3>
@@ -228,7 +229,7 @@ function Card({ a, now, busyId, reload, forceOpen }: { a: PublicAutomation; now:
             </article>
           ))}
         </div>
-      )}
+      </Collapse>
     </li>
   );
 }

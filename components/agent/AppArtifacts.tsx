@@ -146,7 +146,7 @@ export function DashboardArtifact() {
         <ChartCard title="Agents used" note="runs per kind of agent"><BarChart bars={agentUse} format={(n) => String(n)} /></ChartCard>
       </div>
       <ChartCard title="Where the promised money went" note={flow.skipped ? `${flow.currency} only; ${flow.skipped} in other currencies left out` : flow.currency}>
-        <WaterfallChart steps={[{ label: "Promised", value: flow.promised }, { label: "Released", value: -flow.released }, { label: "Declined", value: -flow.declined }, { label: "Still open", value: -flow.open }, { label: "Captured", value: 0, total: true }]} format={(n) => formatMajor(Math.round(n), flow.currency)} height={200} />
+        <WaterfallChart steps={[{ label: "Promised", value: flow.promised }, { label: "Released", value: -flow.released }, { label: "Declined", value: -flow.declined }, { label: "Still open", value: -flow.open }, { label: "Captured", value: 0, total: true }]} format={(n) => `${n < 0 ? "−" : ""}${formatMajor(Math.round(Math.abs(n)), flow.currency)}`} height={200} />
       </ChartCard>
       <ChartCard title="Promise size per day" note={`${flow.currency}: first, highest, lowest, last verdict`}><CandlestickChart candles={amounts} format={(n) => n.toFixed(2)} height={200} /></ChartCard>
       <div>

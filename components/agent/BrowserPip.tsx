@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { IconExpand, IconX } from "@/components/ui/icons";
+import { usePresent } from "@/components/ui/presence";
 import { liveViewSrc } from "@/lib/browse/live-view";
 import type { BrowserState } from "@/lib/integrations/kbrowser";
 import { useAgent } from "./AgentProvider";
@@ -127,7 +128,8 @@ export function BrowserPip() {
     frame.current?.focus();
   }, [handoffKey, view.kind, src]);
 
-  if (!open || !src) return null;
+  const present = usePresent(open); // it fades out instead of vanishing
+  if (!present || !src) return null;
 
   const takeOver = (next: boolean) => {
     setControl(next);
@@ -149,7 +151,7 @@ export function BrowserPip() {
       aria-label="Live browser"
       data-testid="browser-pip"
       data-view={view.kind}
-      className={`fixed bottom-4 right-4 z-[60] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition-[width] duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] ${pip.expanded ? "w-[min(820px,calc(100vw-2rem),calc((100dvh-260px)*1.6))] min-w-[min(420px,calc(100vw-2rem))]" : "w-[236px]"}`}
+      className={`${open ? "fade-in" : "fade-out pointer-events-none"} fixed bottom-4 right-4 z-[60] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition-[width] duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] ${pip.expanded ? "w-[min(820px,calc(100vw-2rem),calc((100dvh-260px)*1.6))] min-w-[min(420px,calc(100vw-2rem))]" : "w-[236px]"}`}
       style={{ transform: `translate(${off.x}px, ${off.y}px)` }}
     >
       <div

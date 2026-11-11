@@ -3,7 +3,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgent } from "@/components/agent/AgentProvider";
+import { Collapse } from "@/components/ui/Collapse";
 import { IconAgent, IconBattle, IconBolt, IconChat, IconCheck, IconChevronDown, IconDollar, IconLayers, IconLoop, IconPanelLeft, IconPin, IconPlus, IconSearch } from "@/components/ui/icons";
+import { useFresh } from "@/components/ui/presence";
 import { APP_NAME, PAL_NAMES } from "@/lib/computer/pals";
 import { useShell } from "./AppShell";
 import { HKIND_INFO, ago, bulkPlan, countsByKind, filterItems, groupItems, pinBulk, sortItems, splitPinned, toggleKey, toggleKind, togglePin, type HItem, type HKind, type Tone } from "./history";
@@ -49,6 +51,8 @@ interface RowProps {
   now: number;
   active: boolean;
   pinned: boolean;
+  /** Added after the list first showed: it rises into place. */
+  fresh: boolean;
   selecting: boolean;
   selected: boolean;
   renaming: boolean;
@@ -79,7 +83,7 @@ function Row(p: RowProps) {
     </>
   );
   return (
-    <li className="group relative">
+    <li className={`group relative focus-within:z-20 hover:z-20 ${p.fresh ? "rise" : ""}`}>
       {p.selecting ? (
         <button type="button" role="checkbox" aria-checked={p.selected} data-testid="recent-row" title={title} onClick={p.onToggle} className={cls}>{inner}</button>
       ) : href ? (
@@ -136,6 +140,8 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
     return { shown, pinned, groups: groupItems(rest, prefs.group, Date.now()) };
   }, [items, prefs.kinds, prefs.sort, prefs.group, prefs.pinned]);
   const onCount = caps?.filter((c) => c.on).length ?? 0;
+  const keys = useMemo(() => items.map((i) => i.key), [items]);
+  const fresh = useFresh(keys, !loading);
   const plan = useMemo(() => bulkPlan(items, selected), [items, selected]);
 
   const exitSelect = () => { setSelecting(false); setSelected([]); setConfirming(false); };
@@ -172,6 +178,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
       now={now}
       active={!selecting && isActive(it)}
       pinned={pinned}
+      fresh={fresh.has(it.key)}
       selecting={selecting}
       selected={selected.includes(it.key)}
       renaming={renaming === it.key}
@@ -232,9 +239,9 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
           <SortGroupMenu prefs={prefs} onChange={setPrefs} />
         </span>
       </div>
-      {prefs.open && <KindChips kinds={prefs.kinds} counts={counts} onToggle={(k) => setPrefs({ kinds: toggleKind(prefs.kinds, k) })} onClear={() => setPrefs({ kinds: [] })} />}
+      <Collapse open={prefs.open}><KindChips kinds={prefs.kinds} counts={counts} onToggle={(k) => setPrefs({ kinds: toggleKind(prefs.kinds, k) })} onClear={() => setPrefs({ kinds: [] })} /></Collapse>
 
-      <div className={`min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1 ${prefs.open ? "" : "hidden"}`} data-testid="recents">
+      <div className="fold-y overflow-y-auto px-2 pb-2 pt-1" data-open={prefs.open} data-testid="recents">
         {loading && items.length === 0 && <ul className="space-y-1">{Array.from({ length: 6 }, (_, i) => <li key={i} className="h-9 animate-pulse rounded-lg bg-surface-2/40" />)}</ul>}
         {!loading && items.length === 0 && <p className="px-3 py-3 text-[13px] text-fg-dim">Nothing here yet. Ask UltraPal something, start a Battle or a Loop, or <Link href="/automations" className="text-accent hover:underline">create an automation</Link>.</p>}
         {items.length > 0 && view.shown.length === 0 && (
@@ -255,7 +262,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
       </div>
 
       {note && <p role="status" className="border-t border-line px-4 py-2 text-[12.5px] text-warn">{note}</p>}
-      {selecting && prefs.open && (
+      <Collapse open={selecting && prefs.open}>
         <div className="border-t border-line px-3 py-2" data-testid="select-bar">
           <div className="flex items-center gap-1 text-[12.5px] text-fg-muted">
             <span className="tabular-nums" aria-live="polite">{plan.chosen.length} selected</span>
@@ -278,7 +285,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
             </div>
           )}
         </div>
-      )}
+      </Collapse>
 
       <div className="mt-auto flex items-center gap-2 border-t border-line px-4 py-3">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[12px] text-fg-muted">

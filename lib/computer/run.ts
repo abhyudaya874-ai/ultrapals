@@ -93,14 +93,58 @@ export interface UsageNote {
   exact: boolean;
   /** How many calls this agent has made in the run. */
   calls: number;
+  /** Present (true) only while the call is still running: the numbers are then estimates that grow with the reply. */
+  live?: true;
+}
+/** What one agent got from one model over the run: how many calls, and the tokens in and out. */
+export interface ModelUse {
+  model: string;
+  provider: string;
+  calls: number;
+  prompt: number;
+  completion: number;
+  /** Every call to this model was counted by the provider. */
+  exact: boolean;
 }
 export interface RunUsage {
   /** The latest call of each agent ("main" is UltraPal). A prompt plus its reply is how much of the model's window that agent is using now. */
   byAgent: Record<string, UsageNote>;
-  /** Tokens spent by every call in the run, prompts and replies. */
+  /** Tokens spent by every finished call in the run, prompts and replies. */
   tokens: number;
   calls: number;
+  /** Per agent, every model it used, in the order it first used them. Built only from finished calls. */
+  models?: Record<string, ModelUse[]>;
+  /** Per agent, the smallest window among the models it has been on. The next call can land on a smaller model, so this is what its context is measured against. */
+  floor?: Record<string, number>;
 }
+
+/** Pure. The same note without the "still running" mark (every other field is required, so a new one cannot be forgotten here). */
+const dropLive = (n: UsageNote): UsageNote => ({ prompt: n.prompt, completion: n.completion, window: n.window, model: n.model, provider: n.provider, exact: n.exact, calls: n.calls });
+
+/** Pure. A call that never finished (the run ended or failed) is no longer "live": its numbers stay as the estimate they were. */
+const settleUsage = (u: RunUsage | undefined): RunUsage | undefined => {
+  if (!u || !Object.values(u.byAgent).some((n) => n.live)) return u;
+  return { ...u, byAgent: Object.fromEntries(Object.entries(u.byAgent).map(([k, n]) => [k, dropLive(n)])) };
+};
+
+/** Pure. One agent stopped (finished or failed): a call of its that never reported an end is no longer running. */
+const settleAgent = (u: RunUsage | undefined, id: string): RunUsage | undefined => {
+  const n = u?.byAgent[id];
+  if (!u || !n?.live) return u;
+  return { ...u, byAgent: { ...u.byAgent, [id]: dropLive(n) } };
+};
+
+/** Pure. The smaller of the windows seen so far for this agent and `w`. */
+const lowest = (floor: Record<string, number> | undefined, id: string, w: number): Record<string, number> => ({ ...floor, [id]: Math.min(floor?.[id] ?? w, w) });
+
+/** Pure. The list of models an agent used with one more finished call added. */
+const addModelUse = (list: readonly ModelUse[] | undefined, e: Extract<CEvent, { kind: "usage" }>): ModelUse[] => {
+  const cur = list ?? [];
+  const i = cur.findIndex((m) => m.model === e.model && m.provider === e.provider);
+  if (i < 0) return [...cur, { model: e.model, provider: e.provider, calls: 1, prompt: e.prompt, completion: e.completion, exact: e.exact }];
+  const m = cur[i];
+  return cur.map((x, j) => (j === i ? { ...m, calls: m.calls + 1, prompt: m.prompt + e.prompt, completion: m.completion + e.completion, exact: m.exact && e.exact } : x));
+};
 export interface Message {
   id: string;
   from: string;
@@ -172,8 +216,10 @@ function onAgent(r: Run, id: string, f: (a: AgentRow) => AgentRow): Run {
 /** Pure reducer. Events for an agent that has not announced itself still land (a blank row is created), so ordering bugs never drop work. */
 export function applyCEvent(r: Run, e: CEvent): Run {
   switch (e.kind) {
-    case "agent":
-      return onAgent(r, e.id, (a) => ({ ...a, role: e.role, title: e.title, state: e.state, ms: e.ms ?? a.ms, parent: e.parent ?? a.parent }));
+    case "agent": {
+      const next = onAgent(r, e.id, (a) => ({ ...a, role: e.role, title: e.title, state: e.state, ms: e.ms ?? a.ms, parent: e.parent ?? a.parent }));
+      return e.state === "running" || !r.usage ? next : { ...next, usage: settleAgent(r.usage, e.id) };
+    }
     case "spawn":
       return { ...r, spawns: [...r.spawns, { parent: e.parent, child: e.child, why: e.why, decision: e.decision, detail: e.detail }] };
     case "message": {
@@ -188,7 +234,20 @@ export function applyCEvent(r: Run, e: CEvent): Run {
       const cur = r.usage ?? { byAgent: {}, tokens: 0, calls: 0 };
       const prev = cur.byAgent[e.agent];
       const note: UsageNote = { prompt: e.prompt, completion: e.completion, window: e.window, model: e.model, provider: e.provider, exact: e.exact, calls: (prev?.calls ?? 0) + 1 };
-      return { ...r, usage: { byAgent: { ...cur.byAgent, [e.agent]: note }, tokens: cur.tokens + e.prompt + e.completion, calls: cur.calls + 1 } };
+      return {
+        ...r,
+        usage: {
+          byAgent: { ...cur.byAgent, [e.agent]: note }, tokens: cur.tokens + e.prompt + e.completion, calls: cur.calls + 1,
+          models: { ...cur.models, [e.agent]: addModelUse(cur.models?.[e.agent], e) },
+          floor: lowest(cur.floor, e.agent, e.window),
+        },
+      };
+    }
+    case "usage_live": {
+      // A call in progress replaces the agent's number at once but is not counted: totals and call counts move only when the call finishes.
+      const cur = r.usage ?? { byAgent: {}, tokens: 0, calls: 0 };
+      const note: UsageNote = { prompt: e.prompt, completion: e.completion, window: e.window, model: e.model, provider: e.provider, exact: false, calls: cur.byAgent[e.agent]?.calls ?? 0, live: true };
+      return { ...r, usage: { ...cur, byAgent: { ...cur.byAgent, [e.agent]: note }, floor: lowest(cur.floor, e.agent, e.window) } };
     }
     case "term":
       return onAgent(r, e.agent, (a) => {
@@ -245,9 +304,9 @@ export function applyCEvent(r: Run, e: CEvent): Run {
     case "answer":
       return { ...r, answer: r.answer + e.delta };
     case "done":
-      return { ...r, status: "done", used: e.used, model: e.model, ms: e.ms };
+      return { ...r, status: "done", used: e.used, model: e.model, ms: e.ms, ...(r.usage ? { usage: settleUsage(r.usage) } : {}) };
     case "error":
-      return { ...r, status: "error", error: e.message };
+      return { ...r, status: "error", error: e.message, ...(r.usage ? { usage: settleUsage(r.usage) } : {}) };
   }
 }
 

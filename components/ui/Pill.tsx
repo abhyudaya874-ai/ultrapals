@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Collapse } from "@/components/ui/Collapse";
 import { IconChevronDown } from "@/components/ui/icons";
 
 /** Dark rounded chip with an icon and a name, like the agent chips in Perplexity Computer. Optionally collapses a body underneath. */
@@ -14,7 +15,7 @@ export function Pill({ icon, name, children, testId }: { icon?: React.ReactNode;
         <span className="truncate">{name}</span>
         <IconChevronDown className={`size-3.5 shrink-0 text-fg-muted transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && <p className="rise mt-1.5 whitespace-pre-wrap rounded-xl bg-black/25 px-3 py-2 text-[12.5px] leading-relaxed text-fg-muted">{children}</p>}
+      <Collapse open={open}><p className="mt-1.5 whitespace-pre-wrap rounded-xl bg-black/25 px-3 py-2 text-[12.5px] leading-relaxed text-fg-muted">{children}</p></Collapse>
     </span>
   );
 }

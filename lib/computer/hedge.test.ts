@@ -73,3 +73,23 @@ async function run2(deps: ModelDeps, accept: (t: string) => boolean) {
   const g = callModelHedged("x", [], deps, { accept });
   for (;;) { const n = await g.next(); if (n.done) return n.value; }
 }
+describe("callModelHedged and the live token count", () => {
+  const many = (n: number) => `${Array.from({ length: n }, (_, i) => `data: ${JSON.stringify({ choices: [{ delta: { content: `w${i} ` } }] })}\n\n`).join("")}data: [DONE]\n\n`;
+  const okMany = (p: "groq", m: string) => ({ ok: true as const, data: { provider: p, model: m, body: stream(many(6)) } });
+  it("tells once that the race began, then follows the one racer that streams first, then the finished call", async () => {
+    let t = 0;
+    const deps: ModelDeps = { open: (async (p: "groq", m: string) => okMany(p, m)) as unknown as typeof openChat, models: M, now: () => (t += 200), hedge: 2, live: true };
+    const g = callModelHedged("x", [{ role: "user", content: "hi" }], deps);
+    const ev: { kind: string; model?: string; completion?: number }[] = [];
+    for (;;) { const n = await g.next(); if (n.done) break; ev.push(n.value as never); }
+    const lives = ev.filter((e) => e.kind === "usage_live");
+    expect(ev[0]).toMatchObject({ kind: "usage_live", completion: 0 }); // the very first thing told: the prompt is on its way
+    expect(lives.filter((e) => (e.completion ?? 0) === 0)).toHaveLength(1); // one opening report for the race; the racers' own are dropped
+    const streamed = lives.slice(1);
+    expect(streamed.length).toBeGreaterThan(0);
+    expect(streamed.every((e) => (e.completion ?? 0) > 0)).toBe(true);
+    expect(new Set(streamed.map((e) => e.model)).size).toBe(1); // one racer is followed, not both
+    expect(ev.at(-1)?.kind).toBe("usage");
+  });
+});
+

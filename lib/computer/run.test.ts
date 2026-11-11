@@ -81,4 +81,49 @@ describe("applyCEvent: tokens", () => {
     const r = fold([use("main", 10, 5), { kind: "answer", delta: "hi" }, { kind: "done", used: [], model: "m", ms: 1 }]);
     expect(r.usage?.tokens).toBe(15);
   });
+  const live = (agent: string, prompt: number, completion: number, o: Partial<Extract<CEvent, { kind: "usage_live" }>> = {}): CEvent => ({ kind: "usage_live", agent, prompt, completion, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq", ...o });
+  it("a call in progress moves the agent's number at once but is not counted in the totals", () => {
+    const r = fold([use("main", 2000, 100), live("main", 2600, 0), live("main", 2600, 340)]);
+    expect(r.usage?.byAgent.main).toEqual({ prompt: 2600, completion: 340, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq", exact: false, calls: 1, live: true });
+    expect(r.usage).toMatchObject({ tokens: 2100, calls: 1 });
+  });
+  it("the finished call replaces the live one, counts once, and is no longer live", () => {
+    const r = fold([use("main", 2000, 100), live("main", 2600, 340), use("main", 2650, 360)]);
+    expect(r.usage?.byAgent.main).toEqual({ prompt: 2650, completion: 360, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq", exact: true, calls: 2 });
+    expect(r.usage).toMatchObject({ tokens: 2100 + 2650 + 360, calls: 2 });
+  });
+  it("the first call of an agent shows live before it has ever finished, with no calls counted yet", () => {
+    const r = fold([live("main", 1900, 0)]);
+    expect(r.usage?.byAgent.main).toMatchObject({ prompt: 1900, calls: 0, live: true });
+    expect(r.usage).toMatchObject({ tokens: 0, calls: 0 });
+  });
+  it("a call that never finished stops being live when the run ends, either way", () => {
+    for (const end of [{ kind: "done", used: [], model: "m", ms: 1 } as CEvent, { kind: "error", message: "x" } as CEvent]) {
+      const r = fold([live("main", 2600, 340), end]);
+      expect(r.usage?.byAgent.main.live).toBeUndefined();
+      expect(r.usage?.byAgent.main).toMatchObject({ prompt: 2600, completion: 340, exact: false });
+    }
+  });
+  it("lists every model an agent used, with its calls and tokens, in the order first used", () => {
+    const r = fold([use("browser-1", 900, 60), use("browser-1", 1000, 80, { model: "openai/gpt-oss-20b" }), use("browser-1", 1100, 40, { exact: false })]);
+    expect(r.usage?.models?.["browser-1"]).toEqual([
+      { model: "openai/gpt-oss-120b", provider: "groq", calls: 2, prompt: 2000, completion: 100, exact: false },
+      { model: "openai/gpt-oss-20b", provider: "groq", calls: 1, prompt: 1000, completion: 80, exact: true },
+    ]);
+  });
+  it("a live report does not add to the models list", () => {
+    expect(fold([live("main", 100, 5)]).usage?.models).toBeUndefined();
+  });
+  it("remembers the smallest window among the models an agent has been on, from running and finished calls alike", () => {
+    const r = fold([live("main", 100, 0, { window: 1_000_000 }), use("main", 100, 5, { window: 262_144 }), live("main", 100, 0, { window: 131_072 }), use("main", 100, 5, { window: 1_000_000 })]);
+    expect(r.usage?.floor).toEqual({ main: 131_072 });
+  });
+  it("a call that never reported an end stops being live when its agent finishes, without touching other agents", () => {
+    const a = (id: string, state: "running" | "ok" | "error"): CEvent => ({ kind: "agent", id, role: "browser", title: id, state });
+    const r = fold([a("browser-1", "running"), a("terminal-1", "running"), live("browser-1", 800, 40), live("terminal-1", 500, 10), a("browser-1", "error")]);
+    expect(r.usage?.byAgent["browser-1"].live).toBeUndefined();
+    expect(r.usage?.byAgent["browser-1"]).toMatchObject({ prompt: 800, completion: 40 });
+    expect(r.usage?.byAgent["terminal-1"].live).toBe(true);
+    expect(fold([a("browser-1", "running"), live("browser-1", 800, 40), a("browser-1", "running")]).usage?.byAgent["browser-1"].live).toBe(true);
+  });
 });

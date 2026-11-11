@@ -387,12 +387,52 @@ describe("research agent", () => {
     const { ev, ret } = await collect(runResearchAgent(ctx("research-1", deps, session), "q"));
     expect(ret).toBe("A [2] and B [1].");
     expect(session.sources.map((s) => [s.n, s.host])).toEqual([[1, "old.example"], [2, "new.example"]]);
-    expect(ev.map((e) => e.kind)).toEqual(["step", "visit", "visit", "visit", "reasoning", "sources", "file", "file"]);
+    expect(ev.map((e) => e.kind)).toEqual(["step", "visit", "visit", "visit", "reasoning", "usage", "sources", "file", "file"]);
+    // the model that wrote the answer is told, as an estimate, so the agent's panel can name it
+    expect(ev.find((e) => e.kind === "usage")).toMatchObject({ agent: "research-1", model: "m", provider: "groq", exact: false });
+    const u = ev.find((e) => e.kind === "usage");
+    expect(u && u.kind === "usage" && u.prompt).toBeGreaterThan(0);
+    expect(u && u.kind === "usage" && u.completion).toBeGreaterThan(0);
     expect(ev.filter((e) => e.kind === "visit").map((e) => e.kind === "visit" && `${e.action}:${e.via}:${e.label}`)).toEqual(["search:tavily:q", "read:tavily:new.example", "read:tavily:old.example"]);
     // the findings are written down as files the next step can read
     expect(Object.keys(session.files)).toEqual(["artifacts/research-1-sources.csv", "artifacts/research-1-notes.md"]);
     expect(session.files["artifacts/research-1-sources.csv"]).toContain("https://new.example/a");
     expect(session.files["artifacts/research-1-notes.md"]).toContain("A [2] and B [1].");
+  });
+  it("tells the context ring what it has used while it writes, then the finished call", async () => {
+    let t = 0;
+    const src = { n: 1, host: "a.example", url: "https://a.example/x", title: "A", snippet: "s", publishedDate: null, provider: "tavily" as const, score: null };
+    const deps = mkDeps(scripted(["x"]).open, {
+      research: async function* () {
+        yield { kind: "sources" as const, sources: [src] };
+        yield { kind: "model" as const, provider: "groq" as const, model: "openai/gpt-oss-120b" };
+        for (let i = 0; i < 5; i++) yield { kind: "answer" as const, delta: `word${i} ` };
+        yield { kind: "done" as const, used: [1], provider: "groq" as const, model: "openai/gpt-oss-120b", ms: 5 };
+      },
+    });
+    deps.model.live = true;
+    deps.model.now = () => (t += 200); // every read is later than the last report by more than a report interval
+    const { ev } = await collect(runResearchAgent(ctx("research-1", deps, mkSession()), "q"));
+    const lives = ev.filter((e) => e.kind === "usage_live");
+    expect(lives.length).toBeGreaterThan(2);
+    expect(lives[0]).toMatchObject({ agent: "research-1", completion: 0, model: "openai/gpt-oss-120b", provider: "groq" });
+    const grown = lives.map((e) => (e.kind === "usage_live" ? e.completion : -1));
+    expect(grown).toEqual([...grown].sort((a, b) => a - b));
+    expect(grown.at(-1)).toBeGreaterThan(0);
+    expect(ev.filter((e) => e.kind === "usage")).toHaveLength(1);
+    expect(ev.findIndex((e) => e.kind === "usage")).toBeGreaterThan(ev.findLastIndex((e) => e.kind === "usage_live"));
+  });
+  it("tells nothing live when live reporting is off", async () => {
+    const deps = mkDeps(scripted(["x"]).open, {
+      research: async function* () {
+        yield { kind: "sources" as const, sources: [] };
+        yield { kind: "model" as const, provider: "groq" as const, model: "m" };
+        yield { kind: "answer" as const, delta: "A." };
+        yield { kind: "done" as const, used: [], provider: "groq" as const, model: "m", ms: 5 };
+      },
+    });
+    const { ev } = await collect(runResearchAgent(ctx("research-1", deps, mkSession()), "q"));
+    expect(ev.some((e) => e.kind === "usage_live")).toBe(false);
   });
   it("returns a readable failure when the research run errors", async () => {
     const deps = mkDeps(scripted(["x"]).open, { research: async function* () { yield { kind: "error" as const, message: "No web results" }; } });

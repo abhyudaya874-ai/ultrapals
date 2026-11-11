@@ -18,15 +18,35 @@ describe("a chat has one ring", () => {
     const [r] = ringsFor({ mode: chat, runs: [], draft: "", busy: false });
     expect(r).toMatchObject({ key: "chat", label: "UltraPal", used: MAIN_BASELINE_TOKENS, window: SMALLEST_WINDOW, exact: false, started: false, model: null, calls: 0 });
   });
-  it("after calls it shows the latest one: what was sent plus what came back, with that model's window", () => {
+  it("after calls it adds up what every agent holds, each against the smallest window it has been on", () => {
     const run = fold("r", use("main", 2000, 100), use("browser-1", 9000, 400), use("main", 3100, 240, { window: 1_000_000, model: "nvidia/nemotron-3-ultra-550b-a55b:free", provider: "openrouter" }));
     const [r] = ringsFor({ mode: chat, runs: [run], draft: "", busy: false });
-    expect(r).toMatchObject({ used: 3340, window: 1_000_000, prompt: 3100, completion: 240, exact: true, calls: 2, started: true, model: "nvidia/nemotron-3-ultra-550b-a55b:free", provider: "openrouter" });
-    expect(r.tokens).toBe(2000 + 100 + 9000 + 400 + 3100 + 240); // everything the run spent, other agents included
+    expect(r).toMatchObject({ used: 3340 + 9400, window: 131_072 + 131_072, prompt: 3100 + 9000, completion: 240 + 400, exact: true, calls: 3, started: true, working: 0, worst: 7 });
+    expect(r.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free"); // the lead is still UltraPal's model
+    expect(r.agents.map((a) => [a.id, a.used])).toEqual([["main", 3340], ["browser-1", 9400]]);
+    expect(r.tokens).toBe(2000 + 100 + 9000 + 400 + 3100 + 240);
   });
-  it("another agent's call is not UltraPal's context", () => {
+  it("follows the call running now, even when it starts smaller than the last one, and grows with its reply", () => {
+    const run = fold("r", use("browser-1", 9000, 400), { kind: "usage_live", agent: "browser-1", prompt: 3000, completion: 0, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq" });
+    const [r] = ringsFor({ mode: chat, runs: [run], draft: "", busy: true });
+    expect(r.agents[0]).toMatchObject({ used: 3000, prompt: 3000, completion: 0, live: true });
+    expect(r.used).toBe(3000);
+    const grown = applyCEvent(run, { kind: "usage_live", agent: "browser-1", prompt: 3000, completion: 7000, window: 131_072, model: "openai/gpt-oss-120b", provider: "groq" });
+    expect(ringsFor({ mode: chat, runs: [grown], draft: "", busy: true })[0].used).toBe(10_000);
+  });
+  it("the denominator does not swing when the rotation lands on a bigger model", () => {
+    let run = fold("r", use("browser-1", 1000, 100));
+    const sizes: number[] = [];
+    for (const [model, window] of [["nvidia/nemotron-3-ultra-550b-a55b:free", 1_000_000], ["openai/gpt-oss-20b", 131_072], ["nvidia/nemotron-3.5-lightning-30b-a3b", 262_144]] as const) {
+      run = applyCEvent(run, { kind: "usage_live", agent: "browser-1", prompt: 1200, completion: 0, window, model, provider: "groq" });
+      sizes.push(ringsFor({ mode: chat, runs: [run], draft: "", busy: true })[0].window);
+    }
+    expect(sizes).toEqual([131_072, 131_072, 131_072]);
+  });
+  it("a Pal's call counts on its own, even before UltraPal has made one", () => {
     const [r] = ringsFor({ mode: chat, runs: [fold("r", use("browser-1", 9000, 400))], draft: "", busy: false });
-    expect(r.started).toBe(false);
+    expect(r).toMatchObject({ started: true, used: 9400 });
+    expect(r.agents.map((a) => a.id)).toEqual(["browser-1"]);
   });
   it("the message being typed adds to it, as an estimate", () => {
     const run = fold("r", use("main", 3000, 100));
@@ -118,3 +138,55 @@ describe("a Loop has a ring per round", () => {
     expect(ringsFor({ mode: loop(5), runs: [run], draft: "", busy: false })[0].started).toBe(true);
   });
 });
+describe("the ring moves while a call is still running", () => {
+  const live = (prompt: number, completion: number, o: Partial<Extract<CEvent, { kind: "usage_live" }>> = {}): CEvent => ({ kind: "usage_live", agent: "main", prompt, completion, window: 262_144, model: "nvidia/nemotron-3-ultra-550b-a55b", provider: "bluesminds", ...o });
+  it("shows the prompt as soon as the call starts, before a word has come back", () => {
+    const [r] = ringsFor({ mode: chat, runs: [fold("r", live(2000, 0))], draft: "", busy: true });
+    expect(r).toMatchObject({ used: 2000, window: 262_144, started: true, live: true, exact: false, calls: 0, model: "nvidia/nemotron-3-ultra-550b-a55b" });
+  });
+  it("grows with the reply, and the run total takes in only what the running call has spent so far", () => {
+    const before = fold("r", use("main", 2000, 100));
+    const [a] = ringsFor({ mode: chat, runs: [before], draft: "", busy: true });
+    const [b] = ringsFor({ mode: chat, runs: [applyCEvent(before, live(2400, 90))], draft: "", busy: true });
+    const [c] = ringsFor({ mode: chat, runs: [applyCEvent(before, live(2400, 400))], draft: "", busy: true });
+    expect([a.used, b.used, c.used]).toEqual([2100, 2490, 2800]);
+    expect(c.tokens).toBe(2100 + 2800);
+    expect(c.live && b.live && !a.live).toBe(true);
+  });
+  it("is the exact figure again once the call has finished", () => {
+    const run = fold("r", use("main", 2000, 100), live(2400, 400), use("main", 2410, 380));
+    const [r] = ringsFor({ mode: chat, runs: [run], draft: "", busy: false });
+    expect(r).toMatchObject({ used: 2790, live: false, exact: true, calls: 2 });
+    expect(r.tokens).toBe(2100 + 2790);
+  });
+  it("a team in a Battle shows live too", () => {
+    const run = arenaRun("battle", 2, 2, { kind: "contender", id: "c1", e: live(1500, 120) });
+    const rings = ringsFor({ mode: battle(2), runs: [run], draft: "", busy: true });
+    expect(rings[0]).toMatchObject({ used: 1620, live: true });
+    expect(rings[1].live).toBe(false);
+  });
+});
+describe("a team's ring adds up that team's agents", () => {
+  it("a Battle team counts its UltraPal and every Pal it sent out", () => {
+    const run = arenaRun("battle", 2, 2,
+      { kind: "contender", id: "c1", e: { kind: "agent", id: "browser-1", role: "browser", title: "BrowserPal", state: "running" } },
+      { kind: "contender", id: "c1", e: use("main", 2000, 100) },
+      { kind: "contender", id: "c1", e: use("browser-1", 5000, 200) },
+      { kind: "contender", id: "c2", e: use("main", 1000, 50) },
+    );
+    const rings = ringsFor({ mode: battle(2), runs: [run], draft: "", busy: true });
+    expect(rings[0]).toMatchObject({ used: 2100 + 5200, working: 1 });
+    expect(rings[0].agents.map((a) => a.name)).toEqual(["UltraPal", "BrowserPal"]);
+    expect(rings[1]).toMatchObject({ used: 1050 });
+  });
+  it("shows the judge and writer as a ring of its own once the contest itself has called a model", () => {
+    const before = arenaRun("battle", 2, 2, { kind: "contender", id: "c1", e: use("main", 2000, 100) });
+    expect(ringsFor({ mode: battle(2), runs: [before], draft: "", busy: true })).toHaveLength(2);
+    const after = applyCEvent(before, use("main", 4000, 300));
+    const rings = ringsFor({ mode: battle(2), runs: [after], draft: "", busy: false });
+    expect(rings).toHaveLength(3);
+    expect(rings[2]).toMatchObject({ key: "contest", label: "Judge and writer", used: 4300 });
+    expect(rings[2].agents[0].name).toBe("Judge and writer");
+  });
+});
+

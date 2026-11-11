@@ -1,11 +1,14 @@
 import type { ArenaMode } from "@/lib/arena/mode";
+import { palName } from "@/lib/computer/pals";
 import type { Run } from "@/lib/computer/run";
+import { collectiveFor, type AgentLoad } from "./context";
 import { MAIN_BASELINE_TOKENS, SMALLEST_WINDOW, estimateTokens } from "./tokens";
 
 /**
- * One ring beside the send button: how much of a model's window an agent is using. Pure. A ring is made from what the model calls really
- * reported (or, where the provider sent no count, from the text that went in and came out) and says which. Before an agent has made a call it
- * shows what its instructions alone take, marked as an estimate.
+ * One ring beside the send button: how much context a whole team is using. Pure. A chat's ring adds up UltraPal and every Pal it sent out (BrowserPal,
+ * TerminalPal, ResearchPal ...); a Battle has one ring per team and a Loop one per round, each adding up that team's own agents. Every number is what the
+ * model calls really reported (or, where the provider sent no count, an estimate from the text that went in and came out) and the ring says which, and it
+ * moves while a call streams. Before any agent has made a call it shows what UltraPal's instructions alone take, marked as an estimate.
  */
 export interface Ring {
   key: string;
@@ -29,15 +32,30 @@ export interface Ring {
   tokens: number;
   /** A real call has been made. */
   started: boolean;
+  /** Each agent's share, UltraPal first: what the ring adds up. */
+  agents: AgentLoad[];
+  /** The fullest single agent, in percent of its own window. The ring turns amber and red on this, not on the sum. */
+  worst: number;
+  /** Agents still working. */
+  working: number;
+  /** The call that these numbers describe is still running: the reply count is an estimate that grows with the stream. */
+  live: boolean;
 }
 
-const notStarted = (key: string, label: string, draft: number): Ring => ({ key, label, model: null, provider: null, used: MAIN_BASELINE_TOKENS + draft, window: SMALLEST_WINDOW, prompt: MAIN_BASELINE_TOKENS, completion: 0, draft, exact: false, calls: 0, tokens: 0, started: false });
+const notStarted = (key: string, label: string, draft: number): Ring => ({ key, label, model: null, provider: null, used: MAIN_BASELINE_TOKENS + draft, window: SMALLEST_WINDOW, prompt: MAIN_BASELINE_TOKENS, completion: 0, draft, exact: false, calls: 0, tokens: 0, started: false, live: false, agents: [], worst: 0, working: 0 });
 
-/** Pure. A ring from the latest call UltraPal ("main") made in a run, or the not-started ring when it has made none. */
-function fromRun(key: string, label: string, run: Run | undefined, draft: number): Ring {
-  const main = run?.usage?.byAgent.main;
-  if (!run || !main) return { ...notStarted(key, label, draft), tokens: run?.usage?.tokens ?? 0 };
-  return { key, label, model: main.model, provider: main.provider, used: main.prompt + main.completion + draft, window: main.window, prompt: main.prompt, completion: main.completion, draft, exact: main.exact, calls: main.calls, tokens: run.usage?.tokens ?? 0, started: true };
+/** Pure. A ring from every agent of a run, or the not-started ring when none has called a model yet. `nameOf` renames agents where "UltraPal" would be wrong. */
+function fromRun(key: string, label: string, run: Run | undefined, draft: number, nameOf?: (id: string) => string): Ring {
+  const c = collectiveFor(run, nameOf);
+  if (!run || !c) return { ...notStarted(key, label, draft), tokens: run?.usage?.tokens ?? 0 };
+  const lead = c.agents[0];
+  return {
+    key, label, model: lead.model, provider: lead.provider,
+    used: c.used + draft, window: c.window,
+    prompt: c.agents.reduce((n, a) => n + a.prompt, 0), completion: c.agents.reduce((n, a) => n + a.completion, 0),
+    draft, exact: c.exact, calls: c.calls, tokens: c.spent, started: true, live: c.live,
+    agents: c.agents, worst: c.worst, working: c.working,
+  };
 }
 
 /** Pure. The rings of a Battle or Loop that is in the thread: one per team or round, with the ones that have not started yet as placeholders. */
@@ -48,7 +66,7 @@ function arenaRings(run: Run): Ring[] {
     const c = a.contenders[i];
     const label = a.mode === "battle" ? `Team ${i + 1}${c ? ` · ${c.info.name}` : ""}` : `Round ${i + 1}${c?.info.scenarioName ? ` · ${c.info.scenarioName}` : ""}`;
     return fromRun(c?.info.id ?? `slot-${i}`, label, c?.run, 0);
-  });
+  }).concat(run.usage ? [fromRun("contest", "Judge and writer", run, 0, (id) => (id === "main" ? "Judge and writer" : palName(id)))] : []);
 }
 
 /**
@@ -59,7 +77,7 @@ function arenaRings(run: Run): Ring[] {
 export function ringsFor(o: { mode: ArenaMode; runs: readonly Run[]; draft: string; busy: boolean }): Ring[] {
   const draft = estimateTokens(o.draft);
   if (o.mode.kind === "chat") {
-    const run = [...o.runs].reverse().find((r) => !r.arena && r.usage?.byAgent.main);
+    const run = [...o.runs].reverse().find((r) => !r.arena && r.usage && Object.keys(r.usage.byAgent).length > 0);
     return [fromRun("chat", "UltraPal", run, draft)];
   }
   const last = o.runs.at(-1);

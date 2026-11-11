@@ -126,3 +126,88 @@ describe("callModel reports the tokens it used", () => {
     expect(ret).toMatchObject({ ok: true, text: '{"a":1}' });
   });
 });
+describe("callModel tells the ring in real time when deps.live is on", () => {
+  const msgs = [{ role: "system" as const, content: "Answer briefly." }, { role: "user" as const, content: "What is 2+2?" }];
+  const many = (n: number) => sse(...Array.from({ length: n }, (_, i) => ({ content: `word${i} ` })));
+  const clock = () => { let t = 0; return () => (t += 200); }; // every read is 200ms later: each piece of the stream is due a report
+  const liveDeps = (open: unknown): ModelDeps => ({ open: open as typeof openChat, models: M, now: clock(), live: true });
+  it("reports the prompt before the first word, then a growing reply, then the finished call", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, many(6));
+    const { ev } = await drain(callModel("main", msgs, liveDeps(open)));
+    const lives = ev.filter((e) => e.kind === "usage_live");
+    expect(lives.length).toBeGreaterThan(2);
+    expect(lives[0]).toMatchObject({ kind: "usage_live", agent: "main", completion: 0, model: "g/a", provider: "groq" });
+    const done = lives.map((e) => (e.kind === "usage_live" ? e.completion : -1));
+    expect(done).toEqual([...done].sort((a, b) => a - b)); // never shrinks while streaming
+    expect(done.at(-1)).toBeGreaterThan(0);
+    expect(ev.at(-1)?.kind).toBe("usage"); // the finished call is told last
+  });
+  it("every live report carries the same prompt count as the model was really given", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, many(4));
+    const { ev } = await drain(callModel("main", msgs, liveDeps(open)));
+    const prompts = new Set(ev.filter((e) => e.kind === "usage_live").map((e) => (e.kind === "usage_live" ? e.prompt : 0)));
+    expect(prompts.size).toBe(1);
+    expect([...prompts][0]).toBeGreaterThan(8);
+  });
+  it("reports nothing live when the flag is off (the default)", async () => {
+    const open = async (p: "groq", m: string) => ok(p, m, many(6));
+    const { ev } = await drain(callModel("main", msgs, deps(open)));
+    expect(ev.some((e) => e.kind === "usage_live")).toBe(false);
+  });
+  it("announces each model as it is tried, so the last report always names the one that answered", async () => {
+    const open = async (p: "groq", m: string) => (m === "g/a" ? bad("groq http 500") : ok(p, m, many(3)));
+    const { ev } = await drain(callModel("main", msgs, liveDeps(open)));
+    const lives = ev.filter((e) => e.kind === "usage_live");
+    expect(lives[0]).toMatchObject({ model: "g/a", completion: 0 }); // tried first, failed: its report is replaced, not left behind
+    expect(lives.slice(1).every((e) => e.kind === "usage_live" && e.model === "g/b")).toBe(true);
+    expect(lives.at(-1)).toMatchObject({ model: "g/b" });
+    expect(ev.at(-1)).toMatchObject({ kind: "usage", model: "g/b" });
+  });
+  it("reports the prompt before the model has even been asked, so a slow connection is not silence", async () => {
+    let asked = false;
+    const open = async (p: "groq", m: string) => { asked = true; return ok(p, m, many(2)); };
+    const g = callModel("main", msgs, liveDeps(open));
+    const first = await g.next();
+    expect(first.value).toMatchObject({ kind: "usage_live", agent: "main", completion: 0, model: "g/a" });
+    expect(asked).toBe(false);
+  });
+});
+
+describe("callModel gives up on a model that says nothing", () => {
+  const silent = (signal?: AbortSignal) => new ReadableStream<Uint8Array>({ start(c) { signal?.addEventListener("abort", () => c.error(new Error("This operation was aborted")), { once: true }); } });
+  const opts = (o: unknown) => o as { signal?: AbortSignal };
+  it("moves on from a stream that never sends a word, and benches that model", async () => {
+    const tried: string[] = [];
+    const open = async (p: "groq", m: string, _msgs: unknown, o: unknown) => { tried.push(m); return m === "g/a" ? { ok: true as const, data: { provider: p, model: m, body: silent(opts(o).signal) } } : ok(p, m, sse({ content: "ok" })); };
+    const r = await drain(callModel("x", [], deps(open), { firstWordMs: 20 }));
+    expect(r.ret).toMatchObject({ ok: true, model: "b" });
+    expect(tried).toEqual(["g/a", "g/b"]);
+    expect(orderModels(M, 0, 1000).map((m) => m.model)).not.toContain("g/a");
+  });
+  it("moves on from a connection that never answers at all", async () => {
+    const open = (p: "groq", m: string, _msgs: unknown, o: unknown) => (m === "g/a"
+      ? new Promise((res) => opts(o).signal?.addEventListener("abort", () => res(bad("groq: This operation was aborted")), { once: true }))
+      : Promise.resolve(ok(p, m, sse({ content: "ok" }))));
+    expect((await drain(callModel("x", [], deps(open), { firstWordMs: 20 }))).ret).toMatchObject({ ok: true, model: "b" });
+  });
+  it("says why when every model stayed silent", async () => {
+    const open = async (p: "groq", m: string, _msgs: unknown, o: unknown) => ({ ok: true as const, data: { provider: p, model: m, body: silent(opts(o).signal) } });
+    const r = await drain(callModel("x", [], { ...deps(open), models: M.slice(0, 2) }, { firstWordMs: 15 }));
+    expect(r.ret).toMatchObject({ ok: false });
+    expect((r.ret as { error: string }).error).toMatch(/sent nothing for/);
+  });
+  it("does not hurry a model that is thinking: thinking, or a word, ends the wait", async () => {
+    // like a real connection, the body errors when the call is aborted
+    const talker = (signal?: AbortSignal) => new ReadableStream<Uint8Array>({
+      async start(c) {
+        const enc = new TextEncoder();
+        signal?.addEventListener("abort", () => { try { c.error(new Error("This operation was aborted")); } catch { /* already closed */ } }, { once: true });
+        c.enqueue(enc.encode(sse({ reasoning: "hm" }).replace("data: [DONE]\n\n", "")));
+        await new Promise((r) => setTimeout(r, 70)); // well past firstWordMs, but it has already spoken
+        try { c.enqueue(enc.encode(sse({ content: "done" }))); c.close(); } catch { /* aborted */ }
+      },
+    });
+    const open = async (p: "groq", m: string, _msgs: unknown, o: unknown) => ({ ok: true as const, data: { provider: p, model: m, body: talker(opts(o).signal) } });
+    expect((await drain(callModel("x", [], deps(open), { firstWordMs: 20 }))).ret).toMatchObject({ ok: true, text: "done", model: "a" });
+  });
+});

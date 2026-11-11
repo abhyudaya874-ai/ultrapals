@@ -10,6 +10,17 @@ export interface Spot {
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), Math.max(lo, hi));
 
+/** Pure. Two placements that put the card in the same place (so showing the second changes nothing on screen). Sub-pixel differences do not count. */
+export function sameSpot(a: Spot, b: Spot): boolean {
+  const near = (x: number | undefined, y: number | undefined): boolean => (x === undefined || y === undefined ? x === y : Math.abs(x - y) < 0.5);
+  return a.placed === b.placed && near(a.left, b.left) && near(a.top, b.top) && near(a.bottom, b.bottom) && near(a.maxHeight, b.maxHeight);
+}
+
+/** Pure. Some part of the trigger is inside the viewport. A card whose trigger has scrolled away would point at nothing, so it closes. */
+export function anchorVisible(a: Box, vp: { w: number; h: number }): boolean {
+  return a.left + a.width > 0 && a.left < vp.w && a.top + a.height > 0 && a.top < vp.h;
+}
+
 /**
  * Pure. Where a card of width `w` goes next to the thing it explains, in viewport pixels. It prefers `side`, flips to the opposite side when
  * there is not room, and is pushed back inside the viewport. Its height is capped to the room it has.

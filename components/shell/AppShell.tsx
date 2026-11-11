@@ -36,12 +36,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ShellCtx.Provider value={{ openSidebar: () => setDrawer(true), openPalette: () => setPalette(true) }}>
       <AgentProvider>
-      <div className="flex h-dvh overflow-hidden bg-canvas text-fg" data-testid="shell">
-        {drawer && <button type="button" aria-label="Close sidebar" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setDrawer(false)} />}
-        <aside data-testid="shell-sidebar" style={left.style} className={`fixed inset-y-0 left-0 z-50 w-[272px] bg-sidebar transition-transform duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:static lg:w-[var(--panel-w)] lg:translate-x-0 lg:transition-none ${left.collapsed ? "lg:hidden" : ""} ${drawer ? "translate-x-0" : "-translate-x-full"}`}>
-          <Suspense fallback={null}><Sidebar onCollapse={() => left.setCollapsed(true)} /></Suspense>
+      {/* overflow-clip, not hidden: a panel that is sliding in is wider than its box, and focusing something inside it must not scroll the whole page sideways */}
+      <div className="flex h-dvh overflow-clip bg-canvas text-fg" data-testid="shell">
+        <button type="button" aria-label="Close sidebar" tabIndex={drawer ? 0 : -1} data-open={drawer} className="scrim fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setDrawer(false)} />
+        <aside data-testid="shell-sidebar" {...left.attrs} className={`slide-w fixed inset-y-0 left-0 z-50 w-[272px] bg-sidebar transition-transform duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:static lg:translate-x-0 ${drawer ? "translate-x-0" : "-translate-x-full"}`}>
+          <div className="slide-in h-full"><Suspense fallback={null}><Sidebar onCollapse={() => left.setCollapsed(true)} /></Suspense></div>
         </aside>
-        {left.collapsed && <Rail title="UltraPals" side="left" onOpen={() => left.setCollapsed(false)} />}
+        <Rail title="UltraPals" side="left" open={left.collapsed} ready={left.ready} onOpen={() => left.setCollapsed(false)} />
         <ResizeHandle r={left} label="sidebar" side="left" />
         <div className="relative min-h-0 min-w-0 flex-1" data-testid="shell-main">{children}{!home && <ArtifactPanel docked={false} />}<Stage /></div>
         {home ? <ArtifactPanel docked /> : <AgentPanel />}

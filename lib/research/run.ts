@@ -10,6 +10,8 @@ import { buildMessages, mergeSources, trimSources, type Source } from "./sources
 export type ResearchEvent =
   | { kind: "step"; id: string; label: string; state: "running" | "ok" | "error"; detail?: string; ms?: number }
   | { kind: "sources"; sources: Source[] }
+  /** A model is about to write the answer: which one, so a caller can say what it is using before it has said a word. */
+  | { kind: "model"; provider: ChatProvider; model: string }
   | { kind: "reasoning"; delta: string }
   | { kind: "answer"; delta: string }
   | { kind: "done"; used: number[]; provider: ChatProvider; model: string; ms: number }
@@ -61,6 +63,7 @@ export async function* research(question: string, signal?: AbortSignal, deps: De
       yield { kind: "step", id, label, state: "error", detail: opened.reason, ms: Date.now() - tm };
       continue;
     }
+    yield { kind: "model", provider: m.provider, model: m.model };
     const reader = opened.data.body.getReader();
     const dec = new TextDecoder();
     let buf = "";

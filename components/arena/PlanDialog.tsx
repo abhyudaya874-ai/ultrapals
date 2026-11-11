@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useAgent, type PendingPlan } from "@/components/agent/AgentProvider";
+import { useLast } from "@/components/ui/presence";
 import { PERSONAS } from "@/lib/arena/personas";
 import { MAX_SLOTS, type Plan, type Slot } from "@/lib/arena/plan";
 import { addSlot, canAdd, canRemove, problemsOf, removeSlot, updateSlot } from "@/lib/arena/plan-edit";
@@ -124,18 +125,20 @@ function Drafting() {
 
 /** The review step for a Battle or Loop whose scenarios a person approves (after a model drafts them) or writes. Nothing runs until Start. */
 export function PlanDialog() {
-  const { pendingPlan, approvePlan, cancelPlan } = useAgent();
+  const { pendingPlan: current, approvePlan, cancelPlan } = useAgent();
+  const pendingPlan = useLast(current); // the old plan is drawn while the dialog fades out
+  const open = current !== null;
   useEffect(() => {
-    if (!pendingPlan) return;
+    if (!current) return;
     const on = (e: KeyboardEvent) => { if (e.key === "Escape") cancelPlan(); };
     document.addEventListener("keydown", on);
     return () => document.removeEventListener("keydown", on);
-  }, [pendingPlan, cancelPlan]);
+  }, [current, cancelPlan]);
   if (!pendingPlan) return null;
   const battle = pendingPlan.kind === "battle";
   return (
-    <div className="fade-in fixed inset-0 z-[70] grid place-items-center bg-black/55 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) cancelPlan(); }}>
-      <div role="dialog" aria-modal="true" aria-label={battle ? "Review the battle" : "Review the loop"} data-testid="plan-dialog" className="sheet-in flex max-h-[88dvh] w-[min(680px,100%)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+    <div className={`${open ? "fade-in" : "fade-out pointer-events-none"} fixed inset-0 z-[70] grid place-items-center bg-black/55 p-4`} onMouseDown={(e) => { if (e.target === e.currentTarget) cancelPlan(); }}>
+      <div role="dialog" aria-modal="true" aria-label={battle ? "Review the battle" : "Review the loop"} data-testid="plan-dialog" className={`${open ? "sheet-in" : "sheet-out"} flex max-h-[88dvh] w-[min(680px,100%)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl`}>
         <header className="shrink-0 px-6 pb-4 pt-6">
           <h2 className="font-serif text-[24px] leading-tight text-fg">{pendingPlan.planMode === "manual" ? "Write the scenarios" : "Review the scenarios"}</h2>
           {pendingPlan.note && <p className="mt-1.5 text-[13.5px] leading-relaxed text-fg-muted">{pendingPlan.note}</p>}

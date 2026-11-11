@@ -28,6 +28,8 @@ export type CEvent =
   | { kind: "reasoning"; agent: string; delta: string }
   /** One model call finished: how many tokens it took and how much the model can hold. `exact` is true when the provider counted them. */
   | { kind: "usage"; agent: string; prompt: number; completion: number; window: number; model: string; provider: string; exact: boolean }
+  /** A model call still in progress: the prompt is known the moment it starts and the reply is an estimate that grows as it streams. The `usage` event replaces it when the call ends. */
+  | { kind: "usage_live"; agent: string; prompt: number; completion: number; window: number; model: string; provider: string }
   | { kind: "term"; agent: string; id: string; command: string; state: RunState; out?: string; exit?: number; ms?: number }
   /** A file written (`patch` is the green/red diff against the old text) or read (`mode: "read"`, `patch` are numbered context rows). `preview` is the new text, capped. */
   | { kind: "file"; agent: string; id: string; path: string; created: boolean; adds: number; removes: number; preview: string; patch?: DiffLine[]; cut?: number; mode?: "write" | "read" }
