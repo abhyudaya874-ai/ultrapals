@@ -86,7 +86,7 @@ function Card({ r, more, setMore }: { r: Ring; more: boolean; setMore: (v: boole
           <Collapse open={more}>
             <div className="space-y-2 pb-0.5">
               <ul className="space-y-1.5">{r.agents.map((a) => <Detail key={a.id} a={a} />)}</ul>
-              <p className="px-1 text-fg-dim">Each bar is what that agent holds (the most its calls have needed so far) against the smallest window among the models it has used, because its next call can land on that one. The ring turns amber from 70% and red from 90% of the fullest single agent.</p>
+              <p className="px-1 text-fg-dim">Each bar is that agent&apos;s latest call against the smallest window among the models it has used, because its next call can land on that one. The ring turns amber from 70% and red from 90% of the fullest single agent.</p>
             </div>
           </Collapse>
         </>
