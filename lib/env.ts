@@ -75,10 +75,18 @@ export type Env = z.infer<typeof Schema>;
 
 let cached: Env | undefined;
 
+/**
+ * Pure. On Render the service is told its own public address (RENDER_EXTERNAL_URL), so a deploy that did not set APP_URL uses that one instead of
+ * localhost: PayPal's return URL and the app's calls to its own routes then point at the real site with no second pass. An APP_URL that is set always wins.
+ */
+export function withRenderUrl(e: Record<string, string | undefined>): Record<string, string | undefined> {
+  return e.APP_URL || !e.RENDER_EXTERNAL_URL ? e : { ...e, APP_URL: e.RENDER_EXTERNAL_URL };
+}
+
 /** Lazy + memoised so `next build` works without secrets. Crashes readably. */
 export function getEnv(): Env {
   if (cached) return cached;
-  const parsed = Schema.safeParse(process.env);
+  const parsed = Schema.safeParse(withRenderUrl(process.env));
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`);
     throw new Error(`Invalid environment:\n${lines.join("\n")}\nCopy env.example to .env.local and fill it in.`);

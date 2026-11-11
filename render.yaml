@@ -1,22 +1,81 @@
-# Web service ONLY. Render Workflows are created in the dashboard (Blueprints do not support them),
-# see .devin/workflows/wire-render.md.
+# One web service runs the whole app: the UI, the API routes, the long agent streams and the in-process automations timer.
+# It needs a long-lived server (a Battle streams for minutes, a cloud computer is held per session, sessions and rate limits live in memory),
+# so it is a paid instance: a free one spins down after 15 minutes idle and cannot have a disk. See docs/DEPLOY.md.
+# Render Workflows are not used (Blueprints cannot define them).
 services:
   - type: web
-    name: standing-promise
+    name: ultrapals
     runtime: node
-    plan: starter
+    plan: standard
+    region: singapore # next to the Neon database (ap-southeast-1)
+    branch: main
+    autoDeployTrigger: commit
     buildCommand: npm ci && npm run build
     startCommand: npm run start
+    healthCheckPath: /api/capabilities
+    # automations are saved to .data/automations.json; only this folder survives a redeploy
+    disk:
+      name: ultrapals-data
+      mountPath: /opt/render/project/src/.data
+      sizeGB: 1
     envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PAYPAL_ENV
+        value: sandbox
+      # APP_URL is left unset on purpose: on Render the app uses RENDER_EXTERNAL_URL (lib/env.ts withRenderUrl)
       - key: DATABASE_URL
         sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
-      - key: PAYPAL_ENV
-        value: sandbox
-      - key: APP_URL
-        sync: false # set to the https://<service>.onrender.com URL after the first deploy
-      - key: CAP_RENDER
+      - key: PAYPAL_SANDBOX_BUYER_EMAIL
+        sync: false
+      - key: PAYPAL_SANDBOX_BUYER_PASSWORD
+        sync: false
+      # capabilities: 1 = on. Every one can be off and the product still works.
+      - key: CAP_KERNEL
         value: "1"
+      - key: KERNEL_API_KEY
+        sync: false
+      - key: CAP_GROQ
+        value: "1"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CAP_OPENROUTER
+        value: "1"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CAP_NVIDIA
+        value: "1"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: CAP_BLUESMINDS
+        value: "1"
+      - key: BLUESMINDS_API_KEY
+        sync: false
+      - key: CAP_TAVILY
+        value: "1"
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: CAP_EXA
+        value: "1"
+      - key: EXA_API_KEY
+        sync: false
+      - key: CAP_STUDIO
+        value: "1"
+      - key: NEXT_PUBLIC_AG_STUDIO_KEY
+        sync: false
+      - key: CAP_BRYNTUM
+        value: "1"
+      - key: CAP_STRIPE
+        value: "1"
+      - key: STRIPE_SANDBOX_KEY
+        sync: false
+      - key: CAP_SQUARE
+        value: "1"
+      - key: SQUARE_SANDBOX_KEY
+        sync: false
+      - key: AUTOMATIONS_TOKEN
+        generateValue: true
