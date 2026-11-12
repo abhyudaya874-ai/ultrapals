@@ -4,7 +4,7 @@ import { freshHandoff, handoffMessage, parseResume, pendingNote, resumeTask, typ
 import { runBrowserAgent } from "./browser-agent";
 import type { Deps, SubCtx } from "./ctx";
 import type { AgentRole, Attachment, CEvent } from "./events";
-import { MAIN_SYSTEM, mainPrompt, parseMainAction } from "./main-actions";
+import { MAIN_SYSTEM, isFinding, mainPrompt, parseMainAction } from "./main-actions";
 import { Spec, asksForSchedule, describeSchedule, parseSchedule } from "@/lib/automations/core";
 import { KIND_INFO, type Kind } from "@/lib/automations/kinds";
 import { runChart } from "./chart-action";
@@ -12,7 +12,7 @@ import { openAppArtifact } from "./app-open";
 import { IMAGE_INSTRUCTION } from "./images";
 import { answerTextSoFar } from "./json-text";
 import { workspaceDigest } from "./artifacts";
-import { callModel, type ModelResult } from "./model";
+import { callModel, callModelHedged, orderModels, type ModelResult } from "./model";
 import { PAL_NAMES } from "./pals";
 import { runPromiseAgent } from "./promise-agent";
 import { runResearchAgent } from "./research-agent";
@@ -44,6 +44,8 @@ export interface MainInput {
   tzOffsetMin?: number;
   /** True once the run is short of time: the next planning round must be the answer, whatever budget of rounds is left. */
   hurry?: () => boolean;
+  /** When this aborts, the subagent at work stops and no new work is handed out, so the planner still has time to write the answer (a Battle team). */
+  stopWork?: AbortSignal;
   /** Run this delegation before the first planning round (the person typed an instruction into the live browser: skip deciding who should do it). */
   firstDelegate?: { agent: Exclude<keyof typeof RUNNERS, "promise">; task: string; /** The pause this continues, when the person has just helped. */ resumed?: Handoff };
   /** Steps the browser agent may take in this run. */
@@ -91,7 +93,8 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     const ts = Date.now();
     yield { kind: "message", id: `to-${id}`, from: "main", to: id, text: task };
     yield { kind: "agent", id, role: agent, title: TITLES[agent], state: "running" };
-    const ctx: SubCtx = { agent: id, session, deps, signal, interactive: input.interactive, ...(resumed ? { resumed } : {}), ...(agent === "browser" && input.browserSteps ? { maxSteps: input.browserSteps } : {}) };
+    const work = input.stopWork ? AbortSignal.any(signal ? [signal, input.stopWork] : [input.stopWork]) : signal;
+    const ctx: SubCtx = { agent: id, session, deps, signal: work, interactive: input.interactive, ...(resumed ? { resumed } : {}), ...(agent === "browser" && input.browserSteps ? { maxSteps: input.browserSteps } : {}) };
     let result: string;
     let failed = false;
     try {
@@ -131,33 +134,42 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
     return;
   }
 
+  /** A run with a deadline (a Battle team) that is past its soft limit: it starts no new work and writes its answer now. */
+  const late = (): boolean => !!input.stopWork && (input.stopWork.aborted || (input.hurry?.() ?? false));
   for (let round = 1; round <= rounds; round++) {
     if (signal?.aborted) return;
     const messages = [
       { role: "system" as const, content: MAIN_SYSTEM },
       {
         role: "user" as const,
-        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === rounds || (input.hurry?.() ?? false) || (!!firstDelegate && round === 1), files: workspaceDigest(session.files), images: imageNotes, ...(pending ? { pending } : {}) }),
+        content: mainPrompt({ prompt: input.prompt, path: input.path, appUrl: deps.appUrl(), pageContext: input.pageContext, selections: input.attachments.map((a) => a.text), history: session.history, results, sources: session.sources, mustAnswer: round === rounds || (input.hurry?.() ?? false) || !!input.stopWork?.aborted || (!!firstDelegate && round === 1), files: workspaceDigest(session.files), images: imageNotes, ...(pending ? { pending } : {}) }),
       },
     ];
     // The final answer is streamed word by word as the model writes it (not dumped at the end); `streamed` is what the user already saw.
     let streamed = "";
     let res: ModelResult;
-    const g = callModel("main", messages, deps.model, { signal, round, maxTokens: 1400, streamAnswer: answerTextSoFar });
+    // A reply that is not one usable action goes to the next model at once (a team's pinned model too), instead of costing a planning round.
+    const opts = { signal, round, maxTokens: 1400, streamAnswer: answerTextSoFar, accept: (t: string) => parseMainAction(t).ok };
+    // A late team races two models for its answer, so one busy model cannot cost it the report. Seen live 2026-11-12: a stalled Nemotron Ultra
+    // held a team's last call for 40 s, and the next model's answer was cut off by the team's time limit half way through.
+    // The race starts on models that are not resting, so its two racers never both open on the one that is free.
+    const racers = { ...deps.model, models: orderModels(deps.model.models, 0, deps.model.now()), hedge: 2, rotate: false };
+    const g = late() ? callModelHedged("main", messages, racers, opts) : callModel("main", messages, deps.model, opts);
     for (;;) {
       const n = await g.next();
       if (n.done) { res = n.value; break; }
       if (n.value.kind === "answer") streamed += n.value.delta;
       yield n.value;
     }
-    if (!res.ok) {
+    if (!res.ok && res.rejected === undefined) {
       yield { kind: "agent", id: "main", role: "main", title: PAL_NAMES.main, state: "error", ms: Date.now() - t0 };
       yield { kind: "error", message: res.error };
       return;
     }
-    const parsed = parseMainAction(res.text);
-    if (!parsed.ok) {
-      results.push({ agent: "system", task: "format check", result: `Your last reply was rejected: ${parsed.error}. Reply with one JSON object.` });
+    const parsed = parseMainAction(res.ok ? res.text : (res.rejected ?? ""));
+    if (!res.ok || !parsed.ok) {
+      // every model answered, but none in the format: say why to the next round, three times at most
+      results.push({ agent: "system", task: "format check", result: `Your last reply was rejected: ${parsed.ok ? "it was not one action" : parsed.error}. Reply with one JSON object.` });
       if (++invalid >= 3) {
         yield { kind: "error", message: "The model kept giving unusable replies." };
         return;
@@ -204,6 +216,10 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
       results.push({ agent: "system", task: `delegate to ${a.agent}`, result: `${a.agent} is not available in this run. Use another agent or answer with what you have.` });
       continue;
     }
+    if (late()) {
+      results.push({ agent: "system", task: `delegate to ${a.agent}`, result: "There is no time left for more work. Answer now with what your team has found." });
+      continue;
+    }
     if (yield* delegate(a.agent, a.task)) {
       yield* waitForPerson();
       return;
@@ -211,7 +227,9 @@ export async function* runMain(session: Session, input: MainInput, deps: Deps, s
   }
 
   // The rounds ran out and the planner still asked for more work instead of answering: end with what the team did find, not in silence.
-  const found = [...results].reverse().find((r) => r.agent !== "system");
+  // the latest result that holds a finding, so a Pal stopped at the end ("Cancelled.") does not hide what an earlier one found
+  const latest = [...results].reverse().filter((r) => r.agent !== "system");
+  const found = latest.find((r) => isFinding(r.result)) ?? latest[0];
   const text = found ? `I ran out of planning steps before writing a full answer. This is what my team found:\n\n${found.result.slice(0, 1500)}` : "I could not produce an answer. Please try again.";
   session.history = pushHistory(pushHistory(session.history, { role: "user", content: input.prompt }), { role: "assistant", content: text });
   yield { kind: "answer", delta: text };

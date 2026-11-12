@@ -30,7 +30,7 @@ describe("modelDepsFor", () => {
   it.each([
     ["light", "groq:openai/gpt-oss-20b", 2],
     ["high", "groq:openai/gpt-oss-120b", 2],
-    ["ultra", "bluesminds:nvidia/nemotron-3-ultra-550b-a55b", 3],
+    ["ultra", "nvidia:nvidia/nemotron-3-ultra-550b-a55b", 3], // NVIDIA's copy: Bluesminds is switched off on the live site
   ] as const)("%s leads with %s and races %i", (level, first, hedge) => {
     const d = modelDepsFor(base, { level });
     expect(ids(d)[0]).toBe(first);

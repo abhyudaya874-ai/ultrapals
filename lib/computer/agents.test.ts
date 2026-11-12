@@ -64,6 +64,13 @@ describe("browser agent", () => {
     const deps = mkDeps(scripted(replies).open, { vm: { snapshot: async () => ok(page("https://a.example", "A")), goto: async () => ok(null) } });
     expect((await collect(runBrowserAgent(ctx("browser-1", deps), "t"))).ret).toContain("used all 12 steps");
   });
+  it("stopped part way, it hands back what it noted from the pages, not just \"Cancelled.\"", async () => {
+    const stop = new AbortController();
+    const model = scripted(['{"action":"scroll","direction":"down","note":"PayPal India: 4.4% plus a fixed fee per international payment"}', '{"action":"finish","answer":"never reached"}']);
+    const deps = mkDeps(model.open, { vm: { snapshot: async () => ok(page("https://www.paypal.com/in/fees", "Fees")), scroll: async () => { stop.abort(); return ok(null); } } });
+    const { ret } = await collect(runBrowserAgent({ ...ctx("browser-1", deps), signal: stop.signal }, "t"));
+    expect(ret).toBe("Stopped before finishing, out of time. Noted from the pages so far: PayPal India: 4.4% plus a fixed fee per international payment Last page: https://www.paypal.com/in/fees.");
+  });
   it("starts the VM once and announces the live view; a missing VM is a clean failure", async () => {
     const deps = mkDeps(scripted(['{"action":"finish","answer":"x"}']).open, { vm: { snapshot: async () => ok(page("https://a.example", "A")) } });
     const { ev } = await collect(runBrowserAgent(ctx("browser-1", deps, mkSession({ vm: null })), "t"));
@@ -359,6 +366,18 @@ describe("terminal agent", () => {
     expect(model.prompts[2]).toContain("REPEAT:");
     expect(ret).toContain("kept repeating");
     expect(ev.filter((e) => e.kind === "term")).toHaveLength(2);
+  });
+  it("stopped part way, it hands back the commands that ran and what they printed, not just \"Cancelled.\"", async () => {
+    const stop = new AbortController();
+    const model = scripted(['{"action":"run","command":"curl -s https://www.paypal.com/in/fees"}', '{"action":"run","command":"echo next"}']);
+    const deps = mkDeps(model.open, { term: { exec: async () => { stop.abort(); return ok({ exit: 0, out: "International payments: 4.4% + fixed fee", ms: 5 }); } } });
+    const { ret } = await collect(runTerminalAgent({ ...ctx("terminal-1", deps), signal: stop.signal }, "t"));
+    expect(ret).toMatch(/^Stopped before finishing, out of time\. Done so far: .*curl -s https:\/\/www\.paypal\.com\/in\/fees.*4\.4% \+ fixed fee/);
+  });
+  it("stopped before any command ran, it says so", async () => {
+    const stop = new AbortController();
+    stop.abort();
+    expect((await collect(runTerminalAgent({ ...ctx("terminal-1", mkDeps(scripted(["x"]).open)), signal: stop.signal }, "t"))).ret).toBe("Cancelled.");
   });
 });
 

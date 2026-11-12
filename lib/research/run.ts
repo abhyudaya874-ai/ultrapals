@@ -1,5 +1,5 @@
 import { openChat, parseChatSse, type ChatProvider } from "@/lib/integrations/chat";
-import { defaultModelDeps } from "@/lib/computer/model";
+import { defaultModelDeps, orderModels, tokenBudget } from "@/lib/computer/model";
 import { exaSearch } from "@/lib/integrations/exa";
 import { tavilySearch } from "@/lib/integrations/tavily";
 import type { AdapterResult, WebSource } from "@/lib/integrations/types";
@@ -52,13 +52,15 @@ export async function* research(question: string, signal?: AbortSignal, deps: De
   }
   yield { kind: "sources", sources };
 
-  for (const [i, m] of deps.models.entries()) {
+  // A model still resting after a rate limit or a stall (the agents' shared cooldowns) is skipped, and a model that thinks before it writes gets the
+  // room to do both: seen live 2026-11-12, Nemotron Ultra spent 45 s thinking inside the old 1,200-token budget and wrote nothing.
+  for (const [i, m] of orderModels(deps.models, 0, Date.now()).entries()) {
     if (signal?.aborted) return;
     const id = `model-${i}`;
     const label = `Writing the answer with ${m.model.split("/").pop()} on ${m.provider}`;
     yield { kind: "step", id, label, state: "running" };
     const tm = Date.now();
-    const opened = await deps.open(m.provider, m.model, buildMessages(question, sources), { signal });
+    const opened = await deps.open(m.provider, m.model, buildMessages(question, sources), { signal, maxTokens: tokenBudget(m.model, 1200) });
     if (!opened.ok) {
       yield { kind: "step", id, label, state: "error", detail: opened.reason, ms: Date.now() - tm };
       continue;

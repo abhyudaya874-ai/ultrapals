@@ -26,7 +26,7 @@ interface LevelInfo {
   rounds: number;
 }
 export const LEVEL_INFO: Record<Level, LevelInfo> = {
-  light: { label: "Light", lead: "GPT-OSS 20B", blurb: "for quick answers. Lowest usage.", first: ["openai/gpt-oss-20b", "nvidia/nemotron-3.5-lightning-30b-a3b"], hedge: 2, rounds: 4 },
+  light: { label: "Light", lead: "GPT-OSS 20B", blurb: "for quick answers. Lowest usage.", first: ["openai/gpt-oss-20b", "qwen/qwen3.8-27b"], hedge: 2, rounds: 4 },
   standard: { label: "Standard", lead: "Free model rotation", blurb: "for balanced speed and depth. Spreads the load across every provider.", first: [], hedge: 2, rounds: 6 },
   high: { label: "High", lead: "GPT-OSS 120B", blurb: "for deeper reasoning on harder tasks. Higher usage.", first: ["openai/gpt-oss-120b", "nvidia/nemotron-3-ultra-550b-a55b"], hedge: 2, rounds: 6 },
   ultra: { label: "Ultra", lead: "Nemotron 3 Ultra 550B", blurb: "for maximum effort and thoroughness. Races three models, plans up to 8 rounds. Highest usage.", first: ["nvidia/nemotron-3-ultra-550b-a55b", "openai/gpt-oss-120b"], hedge: 3, rounds: 8 },
@@ -36,11 +36,12 @@ export const LEVEL_INFO: Record<Level, LevelInfo> = {
 export const PICKABLE: (ModelRef & { label: string; note: string })[] = [
   { provider: "groq", model: "openai/gpt-oss-120b", label: "GPT-OSS 120B", note: "Groq · strongest general model here" },
   { provider: "groq", model: "openai/gpt-oss-20b", label: "GPT-OSS 20B", note: "Groq · fastest" },
-  { provider: "bluesminds", model: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B", note: "Bluesminds · largest" },
+  { provider: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b", label: "Nemotron 3 Ultra 550B", note: "NVIDIA · largest" },
+  { provider: "nvidia", model: "nvidia/nemotron-3.5-super-vl-120b-a12b", label: "Nemotron 3.5 Super VL 120B", note: "NVIDIA · balanced" },
   { provider: "bluesminds", model: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B", note: "Bluesminds · quick" },
   { provider: "nvidia", model: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B", note: "NVIDIA · quick" },
   { provider: "bluesminds", model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron 3 Nano Omni 30B", note: "Bluesminds · reasoning" },
-  { provider: "bluesminds", model: "meta/muse-glimmer-30b", label: "Muse Glimmer 30B", note: "Bluesminds" },
+  { provider: "groq", model: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B", note: "Groq · fast, no thinking" },
   { provider: "openrouter", model: "google/gemma-4-31b-it:free", label: "Gemma 4 31B", note: "OpenRouter · free" },
 ];
 

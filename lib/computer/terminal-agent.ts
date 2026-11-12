@@ -22,10 +22,16 @@ export async function* runTerminalAgent(ctx: SubCtx, task: string): AsyncGenerat
   const sigs: string[] = [];
   let invalid = 0;
 
+  /** Stopped part way (a Battle team's time is up): the commands that ran and what they printed are still worth handing back. */
+  const stopped = () => {
+    const ran = notes.filter((x) => !x.did.startsWith("("));
+    return ran.length ? `Stopped before finishing, out of time. Done so far: ${ran.slice(-4).map((x) => `${x.did} => ${x.result.slice(0, 300).replace(/\s+/g, " ")}`).join(" | ")}` : "Cancelled.";
+  };
+
   for (let n = 1; n <= MAX_STEPS; n++) {
-    if (ctx.signal?.aborted) return "Cancelled.";
+    if (ctx.signal?.aborted) return stopped();
     const res = yield* callModel(agent, buildTermMessages(task, notes), deps.model, { signal: ctx.signal, round: n, maxTokens: 2400 });
-    if (!res.ok) return `I could not decide the next step: ${res.error}`;
+    if (!res.ok) return ctx.signal?.aborted ? stopped() : `I could not decide the next step: ${res.error}`;
     const parsed = parseTermAction(res.text);
     if (!parsed.ok) {
       notes.push({ step: n, did: "(unusable reply)", result: parsed.error });

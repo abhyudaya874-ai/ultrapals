@@ -4,7 +4,8 @@ import { writeArtifact } from "@/lib/computer/artifacts";
 import type { Deps } from "@/lib/computer/ctx";
 import type { CEvent } from "@/lib/computer/events";
 import { runMain } from "@/lib/computer/main-agent";
-import { callModel, type ModelResult } from "@/lib/computer/model";
+import { isFinding } from "@/lib/computer/main-actions";
+import { benchedLong, callModel, orderModels, type ModelResult } from "@/lib/computer/model";
 import { modelDepsFor, roundsFor, type ModelChoice } from "@/lib/computer/models";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { applyCEvent, newRun, subagents, type Run } from "@/lib/computer/run";
@@ -24,6 +25,13 @@ export const PARALLEL = 3;
 export const CONTENDER_MS = 170_000;
 /** After this long a contender is told to write its report now, so it is not cut off at CONTENDER_MS with nothing to show. */
 export const CONTENDER_SOFT_MS = 100_000;
+/**
+ * After this long the Pal still at work for a contender is stopped and no new work is handed out, so the report has the last 50 s. Seen live
+ * 2026-11-12: a team that delegated just before CONTENDER_SOFT_MS got its research back at 152 s, and the planner's answer was cut off at 170 s.
+ */
+export const CONTENDER_WORK_MS = 120_000;
+/** Reading a team's report into an outcome gets its own time, so a team that used all of CONTENDER_MS still has its report read. */
+export const WRITE_UP_MS = 30_000;
 export const START_NO_NEW_AFTER_MS = 400_000;
 export const CONTENDER_ROUNDS_CAP = 5;
 
@@ -50,12 +58,30 @@ async function drain<T>(g: AsyncGenerator<CEvent, T>): Promise<T> {
   }
 }
 
-/** Pure. One distinct model family per contender where the roster allows, cycling when there are more contenders than families. */
+/**
+ * Pure. One model family per contender where the roster allows. Past that, a model no team has yet (another provider's copy of the same model only
+ * once every distinct model is used), and only then do teams share one. Seen live 2026-11-12: with Groq and OpenRouter out for the day, one model
+ * per family left four teams on two models, while NVIDIA alone had four that answer.
+ */
 export function pinsFor(roster: readonly { provider: string; model: string }[], n: number): { provider: string; model: string }[] {
-  const byFamily = new Map<string, { provider: string; model: string }>();
-  for (const m of roster) if (m.model !== "openrouter/free" && !byFamily.has(familyOf(m.model))) byFamily.set(familyOf(m.model), m);
-  const pool = [...byFamily.values()];
-  return Array.from({ length: n }, (_, i) => pool[i % Math.max(1, pool.length)] ?? roster[0]);
+  const pool = roster.filter((m) => m.model !== "openrouter/free");
+  const bare = (m: { model: string }) => m.model.replace(/:free$/i, "");
+  const order: { provider: string; model: string }[] = [];
+  const families = new Set<string>();
+  for (const m of pool) if (!families.has(familyOf(m.model))) { families.add(familyOf(m.model)); order.push(m); }
+  for (const m of pool) if (!order.includes(m) && !order.some((o) => bare(o) === bare(m))) order.push(m);
+  for (const m of pool) if (!order.includes(m)) order.push(m);
+  return Array.from({ length: n }, (_, i) => order[i % Math.max(1, order.length)] ?? roster[0]);
+}
+
+/**
+ * Pure. What a team's Pals reported, as the team's report, for a team that stopped before writing one (its time ran out, or no model would plan).
+ * Null when nothing they returned is a finding: a team that found nothing has no report, rather than a report that only says it failed.
+ */
+export function findingsReport(messages: readonly { from: string; to: string; text: string }[]): string | null {
+  const found = messages.filter((m) => m.to === "main" && m.from !== "main" && isFinding(m.text)).map((m) => m.text.trim());
+  if (!found.length) return null;
+  return `${found.join("\n\n").slice(0, 4000)}\n\n(The team stopped before writing its own report; these are its findings as its Pals reported them.)`;
 }
 
 /** Pure. What was counted about a finished contender run. */
@@ -97,7 +123,9 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
     return;
   }
   const brief: Brief = { question: plan.question, success: plan.success, horizon: plan.horizon };
-  const pins = pinsFor(deps.model.models, plan.slots.length);
+  // one model family per team, but never a model that is benched for the day or gone: a team pinned to it would start by failing
+  const usable = deps.model.models.filter((m) => !benchedLong(m, deps.model.now()));
+  const pins = pinsFor(usable.length ? usable : deps.model.models, plan.slots.length);
   const adaptive = kind === "loop" && input.planMode === "auto";
   const label = kind === "battle" ? "Battle" : "Loop";
   const rounds = Math.min(roundsFor(input.choice), CONTENDER_ROUNDS_CAP);
@@ -118,14 +146,18 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
     let run = newRun(info.id, plan.question);
     const timeout = AbortSignal.timeout(CONTENDER_MS);
     const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const stopWork = AbortSignal.timeout(CONTENDER_WORK_MS);
     const persona = PERSONAS.find((p) => p.id === slot.persona) ?? PERSONAS[0];
     const pin = pins[i];
-    const cdeps: Deps = { ...deps, model: modelDepsFor(deps.model, { level: input.choice.level, pin: { provider: pin.provider as never, model: pin.model } }) };
+    const pinned = modelDepsFor(deps.model, { level: input.choice.level, pin: { provider: pin.provider as never, model: pin.model } });
+    // A team that has to fall back (a rate limit, a bad minute) should not fall onto the same next model as every other team: each team's fallbacks start one place further along.
+    const fallbacks = pinned.models[0]?.model === pin.model ? orderModels(pinned.models.slice(1), i, a.now(), new Map(), Math.max(1, (deps.model.spread ?? pinned.models.length) - 1)) : null;
+    const cdeps: Deps = { ...deps, model: fallbacks ? { ...pinned, models: [pinned.models[0], ...fallbacks] } : pinned };
     const stance = slot.stance ? { text: slot.stance.text } : null;
     const prompt = contenderPrompt({ mode: kind, scenario: input.prompt, brief, persona, stance, tool: slot.tool, ...(slot.scenario ? { variation: slot.scenario } : {}), ...(best ? { best } : {}) });
     const wrap = (e: CEvent): CEvent => ({ kind: "contender", id: info.id, e });
     try {
-      for await (const e of runMain(sess, { prompt, attachments: [], path: "/", pageContext: null, maxRounds: rounds, deny: ["promise", "automate"], hurry: () => a.now() - began > CONTENDER_SOFT_MS }, cdeps, sig)) {
+      for await (const e of runMain(sess, { prompt, attachments: [], path: "/", pageContext: null, maxRounds: rounds, deny: ["promise", "automate"], hurry: () => a.now() - began > CONTENDER_SOFT_MS, stopWork }, cdeps, sig)) {
         run = applyCEvent(run, e);
         yield wrap(e);
       }
@@ -135,11 +167,17 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
       run = applyCEvent(run, e);
       yield wrap(e);
     }
+    // No answer, but the team's Pals found things: those findings are its report, so the judge has something to read instead of "no report".
+    if (!run.answer.trim()) {
+      const found = findingsReport(run.messages);
+      if (found) { const e: CEvent = { kind: "answer", delta: found }; run = applyCEvent(run, e); yield wrap(e); }
+    }
     const facts = factsOf(run, sess);
     let outcome: Outcome | null = null;
     if (run.answer.trim()) {
       yield wrap({ kind: "step", agent: "main", id: "write-up", label: "Writing up the outcome", state: "running" });
-      const res: ModelResult = await drain(callModel(`${info.id}-extract`, outcomeMessages(plan.question, run.answer, run.sources), cdeps.model, { signal: sig, round: i, maxTokens: 700, accept: (t) => parseOutcome(t) !== null }));
+      const writeUp = signal ? AbortSignal.any([signal, AbortSignal.timeout(WRITE_UP_MS)]) : AbortSignal.timeout(WRITE_UP_MS);
+      const res: ModelResult = await drain(callModel(`${info.id}-extract`, outcomeMessages(plan.question, run.answer, run.sources), cdeps.model, { signal: writeUp, round: i, maxTokens: 700, accept: (t) => parseOutcome(t) !== null }));
       outcome = (res.ok ? parseOutcome(res.text) : null) ?? fallbackOutcome(run.answer);
       yield wrap({ kind: "step", agent: "main", id: "write-up", label: "Wrote up the outcome", state: "ok" });
     }
@@ -264,7 +302,7 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
       let slot = planned[r];
       if (adaptive && r > 0) {
         // the next scenario attacks what the best answer so far still lacks
-        const bestEntry = bestId ? { headline: outcomes.get(bestId)?.headline ?? "", weakness: scores.find((s) => s.id === bestId)?.weakness } : null;
+        const bestEntry = bestId && outcomes.get(bestId) ? { headline: outcomes.get(bestId)?.headline ?? "", weakness: scores.find((s) => s.id === bestId)?.weakness } : null;
         yield { kind: "step", agent: "main", id: `scenario-${r + 1}`, label: `Choosing scenario for round ${r + 1}`, state: "running" };
         const res = yield* callModel("main", scenarioMessages(plan.question, tried, bestEntry), deps.model, { signal, round: r, maxTokens: 300, accept: (t) => parseScenario(t, tried) !== null });
         const next = (res.ok ? parseScenario(res.text, tried) : null) ?? nextLens(tried);
@@ -273,7 +311,7 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
       }
       if (slot.scenario) tried.push(slot.scenario.name);
       const info = infoFor(r, slot, kind, pins[r]?.model);
-      const bestEntry = bestId ? { headline: outcomes.get(bestId)?.headline ?? "", weakness: scores.find((s) => s.id === bestId)?.weakness } : undefined;
+      const bestEntry = bestId && outcomes.get(bestId) ? { headline: outcomes.get(bestId)?.headline ?? "", weakness: scores.find((s) => s.id === bestId)?.weakness } : undefined;
       // the round learns what it has to beat; a planned round is updated in place, an adaptive one is added now
       if (bestEntry) info.beat = { ...bestEntry, score: scores.find((s) => s.id === bestId)?.total ?? 0 };
       if (adaptive) { infos.push(info); names[info.id] = info.name; yield { kind: "contender_add", info }; }
@@ -284,9 +322,12 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
       const j = yield* judge(ids, `${session.id}:${r}`, r + 1);
       scores = j.scores; judgeFamily = j.judge; judgeWhy = j.why;
       bestId = scores[0].id;
-      best.push(scores[0].total);
+      // A round that wrote no report says nothing about whether the answer has stopped improving (the models failed, not the idea), so it is not counted
+      // toward the stop rules: the loop goes on to the next scenario instead of ending with "the last round did not beat it".
+      const reported = !!outcomes.get(info.id);
+      if (reported) best.push(scores[0].total);
       yield { kind: "arena_scores", scores, winner: bestId, judge: judgeFamily, why: judgeWhy, round: r + 1 };
-      const stop = loopStop(best, planned.length);
+      const stop = reported ? loopStop(best, planned.length) : { stop: false, reason: null };
       if (stop.stop) { stopNote = stop.reason === "good_enough" ? `the best answer scored ${scores[0].total}, at least ${LOOP_GOOD_ENOUGH}, and the last round did not beat it` : stop.reason === "no_progress" ? "two rounds in a row brought no improvement" : "all planned scenarios were run"; break; }
       yield { kind: "arena_phase", phase: "running", note: `best so far ${scores[0].total} out of 10` };
     }

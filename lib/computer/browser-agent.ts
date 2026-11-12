@@ -54,8 +54,11 @@ export async function* runBrowserAgent(ctx: SubCtx, task: string): AsyncGenerato
     return `NEEDS_HUMAN: ${reason}`;
   }
 
+  /** Stopped part way (a Battle team's time is up): what the model noted from the pages is still worth handing back. */
+  const stopped = () => (memory.length ? `Stopped before finishing, out of time. Noted from the pages so far: ${memoryText(memory, 1200)} Last page: ${lastUrl || "none"}.` : "Cancelled.");
+
   for (let n = 1; n <= maxSteps; n++) {
-    if (ctx.signal?.aborted) return "Cancelled.";
+    if (ctx.signal?.aborted) return stopped();
     let snap = await deps.vm.snapshot(vm);
     if (!snap.ok) return `The browser failed: ${snap.reason}`;
     // A page that has loaded nothing yet (a script-built page) shows an empty view; acting on it wastes a step. Give it a moment, once per address.
@@ -97,7 +100,7 @@ export async function* runBrowserAgent(ctx: SubCtx, task: string): AsyncGenerato
     // The first model to give a usable action wins; a reply that is not one moves on to the next model at once instead of costing a step.
     const res = yield* callModelHedged(agent, buildBrowseMessages(task, s, notes, session.sources, [], noticeFor(need), memoryText(memory)), modelDeps, { signal: ctx.signal, round: n, maxTokens: 700, accept: (t) => parseAction(t).ok });
     // No model answered at all: report it. Models answered but none with an action: say so to the next try, a few times at most.
-    if (!res.ok && res.rejected === undefined) return `I could not decide the next step: ${res.error}`;
+    if (!res.ok && res.rejected === undefined) return ctx.signal?.aborted ? stopped() : `I could not decide the next step: ${res.error}`;
     const parsed = parseAction(res.ok ? res.text : (res.rejected ?? ""));
     if (!parsed.ok) {
       notes.push({ step: n, did: "(unusable reply)", result: parsed.error });

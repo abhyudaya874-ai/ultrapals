@@ -52,14 +52,16 @@ export const WINDOWS: Readonly<Record<string, number>> = {
   "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": 256_000,
   "nvidia/nemotron-3-ultra-550b-a55b": 262_144,
   "nvidia/nemotron-3-ultra-550b-a55b:free": 1_000_000,
-  "meta/muse-glimmer-30b": 131_072,
+  "nvidia/nemotron-3.5-super-vl-120b-a12b": 1_048_576, // OpenRouter's nvidia/nemotron-3.5-super-vl (2026-11-12)
+  "nvidia/nemotron-3.5-bolt-e4b": 65_536, // "64k context", NVIDIA's own model page (research.nvidia.com/labs/nemotron, 2026-11-12)
+  "qwen/qwen3.8-27b": 131_072,
   "google/gemma-4-31b-it:free": 262_144,
   "openrouter/free": 200_000,
 };
 /** For a model nobody has listed: a common size, so a ring is never drawn against zero. */
 export const DEFAULT_WINDOW = 128_000;
 /** The smallest window on the roster: what a ring is drawn against before any model has answered. */
-export const SMALLEST_WINDOW = 131_072;
+export const SMALLEST_WINDOW = 65_536;
 
 /** Pure. How many tokens a model can hold. */
 export const contextWindow = (model: string): number => WINDOWS[model] ?? DEFAULT_WINDOW;

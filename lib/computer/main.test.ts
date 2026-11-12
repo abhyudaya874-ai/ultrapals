@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { formatPromiseContext, loadPageContext, promiseIdFromPath, type PromiseFacts } from "./context";
-import { collect, mkDeps, mkSession, scripted } from "./fakes";
+import { collect, mkDeps, mkSession, scripted, stream } from "./fakes";
 import { runMain } from "./main-agent";
-import { parseMainAction } from "./main-actions";
+import { isFinding, parseMainAction } from "./main-actions";
+import { resetCooldowns } from "./model";
 
 const input = { prompt: "why is this waiting?", attachments: [], path: "/", pageContext: null };
 const kinds = (ev: { kind: string }[]) => ev.map((e) => e.kind);
@@ -46,6 +47,19 @@ describe("main agent", () => {
     const { ev } = await collect(runMain(mkSession(), input, mkDeps(scripted(["x"]).open)));
     expect(ev.at(-1)).toMatchObject({ kind: "error", message: "The model kept giving unusable replies." });
   });
+  it("asks another model after a reply it cannot read, even when the roster is pinned, instead of asking the same model again", async () => {
+    const asked: string[] = [];
+    const open = (async (provider: "groq", model: string) => {
+      asked.push(model);
+      const text = model === "openai/gpt-oss-120b" ? '{"thought":"I will look first."}' : '{"action":"answer","text":"Stripe and Square both charge $0.31 on a $0.25 online sale."}';
+      return { ok: true as const, data: { provider, model, body: stream(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`) } };
+    }) as never;
+    const models = [{ provider: "groq" as const, model: "openai/gpt-oss-120b" }, { provider: "nvidia" as const, model: "nvidia/nemotron-3-ultra-550b-a55b" }];
+    const { ev } = await collect(runMain(mkSession(), input, mkDeps(open, { model: { open, models, rotate: false } })));
+    expect(asked).toEqual(["openai/gpt-oss-120b", "nvidia/nemotron-3-ultra-550b-a55b"]);
+    expect(ev.at(-1)).toMatchObject({ kind: "done" });
+    expect(ev.filter((e) => e.kind === "answer").map((e) => (e.kind === "answer" ? e.delta : "")).join("")).toContain("$0.31");
+  });
   it("forces an answer on the last planning round", async () => {
     const model = scripted(['{"action":"delegate","agent":"research","task":"look again"}']);
     const deps = mkDeps(model.open, { research: async function* () { yield { kind: "error" as const, message: "nothing" }; } });
@@ -81,6 +95,70 @@ describe("parseMainAction", () => {
     expect(parseMainAction('{"action":"delegate","agent":"shell","task":"do the thing"}').ok).toBe(false);
     expect(parseMainAction('{"action":"delegate","agent":"research","task":"x"}').ok).toBe(false);
     expect(parseMainAction('{"action":"answer","text":""}').ok).toBe(false);
+  });
+  it("cuts a task or an answer that runs long instead of refusing the reply", () => {
+    const task = parseMainAction(JSON.stringify({ action: "delegate", agent: "research", task: `Search for PayPal fees in India. ${"Report every number with its source. ".repeat(60)}` }));
+    expect(task).toMatchObject({ ok: true, action: { action: "delegate", agent: "research" } });
+    expect(task.ok && task.action.action === "delegate" && task.action.task.length).toBe(1500);
+    const answer = parseMainAction(JSON.stringify({ action: "answer", text: "y".repeat(7000) }));
+    expect(answer.ok && answer.action.action === "answer" && answer.action.text.length).toBe(6000);
+  });
+});
+
+describe("isFinding", () => {
+  it("is false for what the agents say when they could not work, and true for what they found", () => {
+    for (const r of ["Cancelled.", "Research failed: no answer", "I could not start the cloud computer.", "I could not start the browser.", "I could not decide the next step: every allowlisted model failed", "The browser failed: gone", "The model kept giving unusable replies, so I stopped.", "I kept repeating \"Scrolling down\" without progress.", "I used all 14 steps without finishing. Recent: ...", "Blocked: a CAPTCHA.", "The research agent crashed: socket hang up", "  "])
+      expect(isFinding(r)).toBe(false);
+    expect(isFinding("PayPal India charges 4.4% plus a fixed fee on international payments [1].")).toBe(true);
+  });
+});
+
+describe("main agent near the end of its time", () => {
+  it("hands out no more work once stopWork has fired, and tells the planner to answer", async () => {
+    const stop = new AbortController();
+    stop.abort();
+    const prompts: string[] = [];
+    // the planner insists on more work until it is told there is no time left
+    const open = (async (provider: "groq", model: string, messages: { content: string }[]) => {
+      const p = messages.map((m) => m.content).join("\n");
+      prompts.push(p);
+      const text = p.includes("There is no time left for more work") ? '{"action":"answer","text":"Fees are 4.4% [1]."}' : '{"action":"delegate","agent":"research","task":"one more search"}';
+      return { ok: true as const, data: { provider, model, body: stream(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`) } };
+    }) as never;
+    let researched = 0;
+    const deps = mkDeps(open, { research: async function* () { researched++; } });
+    const { ev } = await collect(runMain(mkSession(), { ...input, stopWork: stop.signal }, deps));
+    expect(researched).toBe(0);
+    expect(prompts[0]).toContain("You have used your planning budget");
+    expect(ev.at(-1)).toMatchObject({ kind: "done" });
+    expect(ev.filter((e) => e.kind === "answer").map((e) => (e.kind === "answer" ? e.delta : "")).join("")).toBe("Fees are 4.4% [1].");
+  });
+  it("once past its soft limit, a run with a deadline starts no new work and races two models for its answer", async () => {
+    resetCooldowns(); // an earlier test in this file benched gpt-oss-120b with a 429
+    const asked: string[] = [];
+    const open = (async (provider: "groq", model: string) => {
+      asked.push(model);
+      // the team's own model has stalled; the second one answers
+      if (model === "openai/gpt-oss-120b") return { ok: true as const, data: { provider, model, body: new ReadableStream<Uint8Array>({ start() { /* never speaks */ } }) } };
+      return { ok: true as const, data: { provider, model, body: stream(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"action":"answer","text":"Fees are 4.4% [1]."}' } }] })}\n\ndata: [DONE]\n\n`) } };
+    }) as never;
+    const models = [{ provider: "groq" as const, model: "openai/gpt-oss-120b" }, { provider: "nvidia" as const, model: "nvidia/nemotron-3-ultra-550b-a55b" }];
+    const t0 = Date.now();
+    const { ev } = await collect(runMain(mkSession(), { ...input, stopWork: new AbortController().signal, hurry: () => true }, mkDeps(open, { model: { open, models, rotate: false } })));
+    expect(Date.now() - t0).toBeLessThan(5000); // it did not wait out the stalled model
+    expect(asked.slice(0, 2).sort()).toEqual(["nvidia/nemotron-3-ultra-550b-a55b", "openai/gpt-oss-120b"]);
+    expect(ev.filter((e) => e.kind === "answer").map((e) => (e.kind === "answer" ? e.delta : "")).join("")).toBe("Fees are 4.4% [1].");
+    expect(ev.at(-1)).toMatchObject({ kind: "done" });
+  });
+  it("stops the Pal at work when stopWork fires, and the planner answers with what it has", async () => {
+    const stop = new AbortController();
+    const model = scripted(['{"action":"delegate","agent":"research","task":"look up the fees"}', '{"action":"answer","text":"Out of time: fees unknown."}']);
+    let seen: AbortSignal | undefined;
+    const deps = mkDeps(model.open, { research: async function* (_q: string, s?: AbortSignal) { seen = s; stop.abort(); yield { kind: "error" as const, message: s?.aborted ? "cancelled" : "not stopped" }; } });
+    const { ev } = await collect(runMain(mkSession(), { ...input, stopWork: stop.signal }, deps));
+    expect(seen?.aborted).toBe(true);
+    expect(model.prompts[1]).toContain("You have used your planning budget");
+    expect(ev.at(-1)).toMatchObject({ kind: "done" });
   });
 });
 

@@ -1,4 +1,5 @@
 import { buildMessages, type Source } from "@/lib/research/sources";
+import { defaultDeps as researchDefaults } from "@/lib/research/run";
 import { contextWindow, estimateTokens, messagesTokens } from "@/lib/usage/tokens";
 import { LIVE_MS } from "./model";
 import type { SubCtx } from "./ctx";
@@ -23,7 +24,8 @@ export async function* runResearchAgent(ctx: SubCtx, task: string): AsyncGenerat
   let lastLive = 0;
   const live = deps.model.live === true;
   const tell = (completion: number): CEvent => ({ kind: "usage_live", agent, prompt: writing!.prompt, completion, window: contextWindow(writing!.model), model: writing!.model, provider: writing!.provider });
-  for await (const e of deps.research(task, ctx.signal)) {
+  // The answer is written on this run's own model order (a Battle team's model first), not every team on the same first model.
+  for await (const e of deps.research(task, ctx.signal, { ...researchDefaults, open: deps.model.open, models: deps.model.models })) {
     if (e.kind === "step") {
       yield { kind: "step", agent, id: e.id, label: e.label, state: e.state, detail: e.detail, ms: e.ms };
       if (e.id === "search-tavily" || e.id === "search-exa") {

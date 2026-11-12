@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { openChat } from "@/lib/integrations/chat";
 import type { WebSource } from "@/lib/integrations/types";
+import { callModel, resetCooldowns } from "@/lib/computer/model";
 import { research, type Deps, type ResearchEvent } from "./run";
 
 const web = (url: string, provider: WebSource["provider"] = "tavily"): WebSource => ({ url, title: url, snippet: `about ${url}`, publishedDate: null, provider, score: null });
@@ -50,6 +51,23 @@ describe("research", () => {
     expect(ev.find((e) => e.kind === "step" && e.id === "search-exa" && e.state === "error")).toMatchObject({ detail: "exa http 429" });
     expect(ev.find((e) => e.kind === "sources")).toMatchObject({ sources: [{ n: 1 }] });
     expect(ev.at(-1)).toMatchObject({ kind: "done" });
+  });
+  it("gives a model that thinks before it writes the room to do both", async () => {
+    const asked: (number | undefined)[] = [];
+    const open = (async (_p, model, _m, o) => { asked.push(o?.maxTokens); return ok(model, sse({ content: "ok [1]" })); }) as typeof openChat;
+    await collect({ ...base(open), models: [{ provider: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b" }] });
+    await collect({ ...base(open), models: [{ provider: "groq", model: "openai/gpt-oss-120b" }] });
+    expect(asked).toEqual([2700, 1200]);
+  });
+  it("skips a model that is still resting after a rate limit, and asks the next one first", async () => {
+    resetCooldowns();
+    const g = callModel("x", [], { open: (async () => bad("groq http 429")) as typeof openChat, models: [{ provider: "groq", model: "m1" }], now: Date.now });
+    while (!(await g.next()).done) { /* the failed call benches m1 */ }
+    const asked: string[] = [];
+    const open = (async (_p, model) => { asked.push(model); return ok(model, sse({ content: "ok [1]" })); }) as typeof openChat;
+    expect((await collect(base(open))).at(-1)).toMatchObject({ kind: "done", model: "m2:free" });
+    expect(asked).toEqual(["m2:free"]);
+    resetCooldowns();
   });
   it("errors honestly when there are no web results or every model fails", async () => {
     const none = base((async () => bad("x")) as typeof openChat);

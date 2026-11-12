@@ -4,7 +4,8 @@ import type { CEvent } from "@/lib/computer/events";
 import { collect, mkDeps, mkSession, stream } from "@/lib/computer/fakes";
 import { applyCEvent, newRun } from "@/lib/computer/run";
 import { defaultPlan } from "./plan";
-import { runArena, type ArenaDeps } from "./run";
+import { callModel, resetCooldowns } from "@/lib/computer/model";
+import { findingsReport, pinsFor, runArena, type ArenaDeps } from "./run";
 
 const sse = (t: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\ndata: [DONE]\n\n`;
 // How good the blind judge finds each persona or scenario. The judge never sees persona names (they are scrubbed to "the analyst"), so a report
@@ -85,6 +86,71 @@ describe("Battle: contenders run, then a judged knockout", () => {
       expect(m.why!.headline.length).toBeGreaterThan(10);
     }
   });
+  it("never pins a team to a model that is benched for the day: the first teams still get a family each", async () => {
+    resetCooldowns();
+    const s = setup();
+    const gemma = { provider: "openrouter" as const, model: "google/gemma-4-31b-it:free" };
+    const out = (async () => ({ ok: false as const, degraded: true as const, reason: "openrouter http 429 daily" })) as never;
+    const g = callModel("x", [], { open: out, models: [gemma], now: () => 1000 });
+    while (!(await g.next()).done) { /* run the call to its end, so its failure benches the model */ }
+    const { ev } = await collect(runArena(s.session, { prompt: "x scenario", plan, planMode: "auto", choice: { level: "standard" } }, s.deps, s.a));
+    // the model each team starts on is shown on its card
+    const start = ev.find((e) => e.kind === "arena");
+    const pinned = start && start.kind === "arena" ? start.contenders.map((c) => c.model) : [];
+    expect(pinned).toHaveLength(4);
+    expect(pinned).not.toContain(gemma.model);
+    expect(new Set(pinned.slice(0, 3).map((m) => m!.split("/")[0])).size).toBe(3); // the first teams still get a family each
+    resetCooldowns();
+  });
+  it("when teams have to fall back, they do not all fall onto the same model", async () => {
+    resetCooldowns();
+    const s = setup();
+    const seen = new Map<string, string[]>();
+    const real = s.deps.model.open as unknown as (p: string, m: string, x: { content: string }[]) => Promise<unknown>;
+    // every team's first model refuses once; then see where each team goes next
+    const open = (async (provider: string, model: string, messages: { content: string }[]) => {
+      if (messages[0].content.includes("You are UltraPal, the lead")) {
+        const who = /You are ([A-Za-z ]+?):/.exec(messages[1]?.content ?? "")?.[1] ?? "?";
+        const tried = seen.get(who) ?? [];
+        seen.set(who, [...tried, model]);
+        if (tried.length === 0) return { ok: false as const, degraded: true as const, reason: "provider http 500" } as never;
+      }
+      return real(provider, model, messages) as never;
+    }) as never;
+    const deps = { ...s.deps, model: { ...s.deps.model, open, hedge: 1 } };
+    await collect(runArena(s.session, { prompt: "x scenario", plan, planMode: "auto", choice: { level: "standard" } }, deps, s.a));
+    const second = [...seen.values()].map((m) => m[1]);
+    expect(second).toHaveLength(4);
+    expect(new Set(second).size).toBeGreaterThanOrEqual(3); // all falling onto the same next model would give two
+    resetCooldowns();
+  });
+  it("a team whose Pals found things but whose planner never answered is judged on those findings, not counted as having no report", async () => {
+    resetCooldowns();
+    const s = setup();
+    let skepticCalls = 0;
+    const real = s.deps.model.open as unknown as (p: string, m: string, x: { content: string }[]) => Promise<unknown>;
+    const open = (async (provider: string, model: string, messages: { content: string }[]) => {
+      if (messages[0].content.includes("You are UltraPal, the lead") && (messages[1]?.content ?? "").includes("You are Skeptic:")) {
+        // the first round sends research out; after that no model answers at all (a bad minute on every provider)
+        if (++skepticCalls === 1) return { ok: true as const, data: { provider, model, body: stream(sse(JSON.stringify({ action: "delegate", agent: "research", task: "find the fees" }))) } } as never;
+        return { ok: false as const, degraded: true as const, reason: "provider http 500" } as never;
+      }
+      return real(provider, model, messages) as never;
+    }) as never;
+    const research = async function* () {
+      yield { kind: "sources" as const, sources: [{ n: 1, host: "paypal.com", url: "https://paypal.com/fees", title: "Fees", snippet: "s", publishedDate: null, provider: "tavily" as const, score: null }] };
+      yield { kind: "answer" as const, delta: "[S8] PayPal charges 4.4% on international payments [1]." };
+      yield { kind: "done" as const, used: [1], provider: "groq" as const, model: "m", ms: 5 };
+    };
+    const deps = { ...s.deps, research, model: { ...s.deps.model, open, hedge: 1 } };
+    const { ev } = await collect(runArena(s.session, { prompt: "x scenario", plan, planMode: "auto", choice: { level: "standard" } }, deps, s.a));
+    const done = ev.find((e) => e.kind === "contender_done" && e.id.includes("skeptic"));
+    expect(done && done.kind === "contender_done" && done.outcome?.headline).toContain("4.4%");
+    const skeptic = ev.filter((e) => e.kind === "arena_match" && !e.match.bye && [e.match.a, e.match.b].some((id) => id?.includes("skeptic")));
+    expect(skeptic.length).toBeGreaterThan(0);
+    for (const m of skeptic) expect(m.kind === "arena_match" && m.match.judged).toBe(true);
+    resetCooldowns();
+  });
   it("the judge is blind: no persona names, and only two reports per match", async () => {
     const { calls } = await run();
     const judge = calls.filter((c) => c.sys.includes("independent, blind judge"));
@@ -162,6 +228,23 @@ describe("Loop: one team per round, different scenarios, until it is good enough
     expect(writing && writing.kind === "arena_phase" && writing.note).toContain("two rounds in a row brought no improvement");
     expect(ev.at(-1)).toMatchObject({ kind: "done" });
   });
+  it("a round whose team wrote no report is not read as the answer having stopped improving: the loop goes on to the next scenario", async () => {
+    const s = setup(["Worst realistic case", "Half the budget", "Hostile counterpart", "Fifth one"]);
+    // rounds 3 and 4 get no answer out of any model (a bad minute on the free providers); before, two flat rounds ended the loop at round 4
+    const flaky = (async (provider: string, model: string, messages: { content: string }[]) => {
+      if (messages[0].content.includes("You are UltraPal, the lead") && /ROUND, "(Half the budget|Hostile counterpart)"/.test(messages[1]?.content ?? "")) return { ok: false as const, degraded: true as const, reason: "groq http 429" } as never;
+      return (s.deps.model.open as unknown as (p: string, m: string, x: { content: string }[]) => Promise<unknown>)(provider, model, messages) as never;
+    }) as never;
+    const deps = { ...s.deps, model: { ...s.deps.model, open: flaky, hedge: 1 } };
+    const { ev } = await collect(runArena(s.session, { prompt: "x scenario", plan, planMode: "auto", choice: { level: "standard" } }, deps, s.a));
+    const done = ev.filter((e) => e.kind === "contender_done").map((e) => (e.kind === "contender_done" ? e.ok : null));
+    expect(done.slice(0, 4)).toEqual([true, true, false, false]);
+    expect(ev.filter((e) => e.kind === "arena_scores")).toHaveLength(6); // all six planned rounds ran
+    expect(s.closed).toHaveLength(6);
+    const state = ev.reduce(applyCEvent, newRun("r", "p")).arena!;
+    expect(state.winner).toContain("r2"); // the best report so far still wins, and the failed rounds are not it
+    expect(ev.at(-1)).toMatchObject({ kind: "done" });
+  });
   it("later rounds are told what to beat", async () => {
     const s = setup(["Worst realistic case", "Half the budget", "Hostile counterpart"]);
     await collect(runArena(s.session, { prompt: "x scenario", plan, planMode: "auto", choice: { level: "standard" } }, s.deps, s.a));
@@ -181,4 +264,35 @@ describe("Loop: one team per round, different scenarios, until it is good enough
     expect(s.calls.some((c) => c.sys.includes("design the NEXT test scenario"))).toBe(false);
     expect(ev.filter((e) => e.kind === "contender_done")).toHaveLength(2);
   });
+});
+
+describe("pinsFor", () => {
+  const R = (...ids: string[]) => ids.map((x) => ({ provider: x.split(" ")[0], model: x.split(" ")[1] }));
+  const roster = R("nvidia nvidia/ultra", "groq qwen/qwen3", "nvidia nvidia/super-vl", "bluesminds nvidia/ultra", "openrouter nvidia/ultra:free", "nvidia nvidia/bolt", "openrouter openrouter/free");
+  it("gives each team its own family first, then a model no team has, and only then another provider's copy of one", () => {
+    expect(pinsFor(roster, 6).map((m) => `${m.provider} ${m.model}`)).toEqual(["nvidia nvidia/ultra", "groq qwen/qwen3", "nvidia nvidia/super-vl", "nvidia nvidia/bolt", "bluesminds nvidia/ultra", "openrouter nvidia/ultra:free"]);
+  });
+  it("shares models only when there are more teams than models, and never pins the free router", () => {
+    const pins = pinsFor(roster, 8).map((m) => m.model);
+    expect(pins.slice(6)).toEqual(["nvidia/ultra", "qwen/qwen3"]);
+    expect(pins).not.toContain("openrouter/free");
+    expect(pinsFor(R("openrouter openrouter/free"), 2)).toEqual(R("openrouter openrouter/free", "openrouter openrouter/free"));
+  });
+});
+
+describe("findingsReport", () => {
+  it("is what the team's Pals found, without the tasks or the notes that only say a Pal could not work", () => {
+    const r = findingsReport([
+      { from: "main", to: "research-1", text: "find the fees" },
+      { from: "research-1", to: "main", text: "PayPal India charges 4.4% on international payments [1]." },
+      { from: "terminal-2", to: "main", text: "Cancelled." },
+      { from: "browser-3", to: "main", text: "The fee page lists a fixed fee of 0.30 USD per payment [2]." },
+    ]);
+    expect(r).toContain("4.4%");
+    expect(r).toContain("0.30 USD");
+    expect(r).not.toContain("Cancelled");
+    expect(r).not.toContain("find the fees");
+    expect(r!.startsWith("PayPal India charges 4.4%")).toBe(true); // the findings come first, so a report read without a model still leads with one
+  });
+  it("is nothing when the team found nothing", () => expect(findingsReport([{ from: "research-1", to: "main", text: "Research failed: no answer" }])).toBeNull());
 });

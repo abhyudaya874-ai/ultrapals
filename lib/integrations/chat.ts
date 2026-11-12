@@ -46,7 +46,10 @@ export const OPENROUTER_FREE_MODELS = [
   "nvidia/nemotron-3.5-super-vl:free",
   "openrouter/free",
 ] as const;
-export const NVIDIA_MODELS = ["nvidia/nemotron-3.5-lightning-30b-a3b"] as const; // live-probed 2026-11-10; deepseek/glm/minimax flash hung >40s, llama-3.3 and kimi-k2.6 are gone
+// Live-probed 2026-11-12 with a planner-style JSON task on this account's key: Bolt 3.5 s, Super VL 8 s, Ultra 9 s, all usable; eight requests at once
+// were all accepted. Not added: gpt-oss-20b, deepseek-v4.1-flash and glm-5.3-flash sent nothing for 60 s; minimax-m3.1-flash answered 503; gemma-4,
+// kimi-k2.6, nemotron-3-super, nemotron-nano-3, llama-3.1-nemotron and mistral-large-2 are listed in /v1/models but answer 404 "not found for account".
+export const NVIDIA_MODELS = ["nvidia/nemotron-3.5-lightning-30b-a3b", "nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3.5-bolt-e4b"] as const;
 export const TOKENROUTER_MODELS = ["x-ai/grok-4.1-fast", "deepseek/deepseek-v4.1-flash", "openai/gpt-oss-120b"] as const; // key valid, account balance $0 on 2026-11-10: recharge, then add to the roster
 export const BLUESMINDS_MODELS = [
   "nvidia/nemotron-3.5-lightning-30b-a3b",
@@ -113,6 +116,24 @@ export function parseChatSse(buffer: string): { deltas: ChatDelta[]; rest: strin
   return { deltas, rest, done };
 }
 
+/**
+ * Pure. Why a request failed, in words the router reads: "groq http 429", and for a rate limit how long to wait ("retry 7s", from the Retry-After
+ * header or the provider's own "try again in 7.34s") and whether the limit is a day's ("daily", as OpenRouter's free models say). Groq's free plan
+ * allows 8,000 tokens a minute per model, so a busy minute hits this often and clears in seconds; a model that is benched for a whole minute instead
+ * pushes every call onto slower ones.
+ */
+export function failureReason(provider: ChatProvider, status: number, retryAfter: string | null, body: string): string {
+  const base = `${provider} http ${status}`;
+  if (status !== 429) return base;
+  let sec = retryAfter && /^\d+(\.\d+)?$/.test(retryAfter.trim()) ? Number(retryAfter) : NaN;
+  if (!Number.isFinite(sec)) {
+    const m = /try again in (?:(\d+)m(?=\d))?(?:(\d+(?:\.\d+)?)(ms|s))?/i.exec(body);
+    if (m && (m[1] || m[2])) sec = Number(m[1] ?? 0) * 60 + (m[2] ? (m[3]?.toLowerCase() === "ms" ? Number(m[2]) / 1000 : Number(m[2])) : 0);
+  }
+  const daily = /per[- ]day|per day|daily/i.test(body);
+  return `${base}${Number.isFinite(sec) ? ` retry ${Math.max(1, Math.ceil(sec))}s` : ""}${daily ? " daily" : ""}`;
+}
+
 /** Opens a streaming completion. The caller reads `body` and feeds it to parseChatSse. 4xx/5xx/429 degrade so the router can fall back. */
 export async function openChat(
   provider: ChatProvider,
@@ -138,7 +159,11 @@ export async function openChat(
       }),
       signal: AbortSignal.any(signals),
     });
-    if (!res.ok || !res.body) return degrade(`${provider} http ${res.status}`);
+    if (!res.ok || !res.body) {
+      // A rate limit says when to come back and whether the limit is a day's; read both, so the router waits as long as it must and no longer.
+      const hint = res.status === 429 ? await res.text().catch(() => "") : "";
+      return degrade(failureReason(provider, res.status, res.headers.get("retry-after"), hint));
+    }
     return { ok: true, data: { provider, model, body: res.body } };
   });
 }

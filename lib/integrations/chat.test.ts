@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLUESMINDS_MODELS, GROQ_FREE_MODELS, NVIDIA_MODELS, OPENROUTER_FREE_MODELS, TOKENROUTER_MODELS, isAllowedModel, parseChatSse } from "./chat";
+import { BLUESMINDS_MODELS, GROQ_FREE_MODELS, NVIDIA_MODELS, OPENROUTER_FREE_MODELS, TOKENROUTER_MODELS, failureReason, isAllowedModel, parseChatSse } from "./chat";
 
 const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
 const delta = (d: object) => ev({ choices: [{ index: 0, delta: d }] });
@@ -71,5 +71,29 @@ describe("providers that name the thinking reasoning_content, and that report us
   });
   it("a null usage on ordinary chunks adds nothing", () => {
     expect(parseChatSse(chunk({ choices: [{ delta: { content: "hi" } }], usage: null })).deltas).toEqual([{ content: "hi" }]);
+  });
+});
+
+describe("failureReason: what the router is told when a request is refused", () => {
+  it("is just the status for anything but a rate limit", () => {
+    expect(failureReason("groq", 500, "30", "try again in 5s")).toBe("groq http 500");
+    expect(failureReason("bluesminds", 404, null, "")).toBe("bluesminds http 404");
+  });
+  it("reads when a rate limit clears from the Retry-After header first", () => {
+    expect(failureReason("groq", 429, "7", "")).toBe("groq http 429 retry 7s");
+    expect(failureReason("groq", 429, "2.2", "try again in 30s")).toBe("groq http 429 retry 3s");
+  });
+  it("reads it from Groq's own words when there is no header, in seconds, milliseconds, or minutes and seconds", () => {
+    const body = (when: string) => `Rate limit reached for model openai/gpt-oss-120b on tokens per minute (TPM): Limit 8000, Used 7000, Requested 2500. Please try again in ${when}. Need more tokens?`;
+    expect(failureReason("groq", 429, null, body("7.34s"))).toBe("groq http 429 retry 8s");
+    expect(failureReason("groq", 429, null, body("850ms"))).toBe("groq http 429 retry 1s");
+    expect(failureReason("groq", 429, null, body("6m23.4s"))).toBe("groq http 429 retry 384s");
+  });
+  it("says so when the limit is for the day, as OpenRouter's free models do", () => {
+    const body = JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day" } });
+    expect(failureReason("openrouter", 429, null, body)).toBe("openrouter http 429 daily");
+  });
+  it("is still just the status when a rate limit says nothing about when", () => {
+    expect(failureReason("nvidia", 429, null, "slow down")).toBe("nvidia http 429");
   });
 });
