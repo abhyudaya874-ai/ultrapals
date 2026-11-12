@@ -4,6 +4,8 @@ import { useStickToBottom } from "@/components/thread/Dock";
 import { IconArrowDown, IconBoard, IconBolt, IconClock, IconGlobe, IconLayers, IconPlus } from "@/components/ui/icons";
 import { UltraOrb } from "@/components/orbs/Orbs";
 import { ultraState } from "@/components/orbs/mood";
+import { heroLine, heroTitle } from "@/components/arena/cast";
+import { ModeCast } from "@/components/arena/ModeCast";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { useAgent } from "./AgentProvider";
 import { PromptBox } from "./PromptBox";
@@ -11,6 +13,8 @@ import { fillPrompt } from "./prompt-model";
 import { APP_ARTIFACTS } from "./panel-model";
 import { RunView } from "./RunView";
 import { SUGGESTION_CAPTION, startsAtOnce, suggestionsFor } from "./suggestions";
+
+const HERO_LINE = "Research the web, drive a live browser, run commands, and move sandbox money only when a verdict computed in code says so.";
 
 /** The main screen: UltraPal as a full-width chat. Artifacts open in the panel on the right (see ArtifactPanel). */
 export function AgentHome() {
@@ -26,9 +30,9 @@ export function AgentHome() {
       <main className="h-full overflow-y-auto" data-testid="agent-home">
         <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center gap-6 px-6 py-10">
           <header>
-            <UltraOrb size={120} state={ultra} className="-ml-2 mb-1" />
-            <h1 className="font-serif text-[40px] leading-tight text-fg">{PAL_NAMES.main}</h1>
-            <p className="mt-1 text-[15px] text-fg-muted">Research the web, drive a live browser, run commands, and move sandbox money only when a verdict computed in code says so.</p>
+            <ModeCast mode={mode} state={ultra} />
+            <h1 className="font-serif text-[40px] leading-tight text-fg" data-testid="hero-title">{heroTitle(mode, PAL_NAMES.main)}</h1>
+            <p className="mt-1 text-[15px] text-fg-muted" data-testid="hero-line">{heroLine(mode, HERO_LINE)}</p>
           </header>
           <PromptBox variant="hero" placeholder="Ask, build, research, or paste a screenshot…" />
           <div>

@@ -89,6 +89,21 @@ textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
 @keyframes duel-ring { from { opacity: 0.6; transform: translate(-50%, -50%) scale(0.3); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.7); } }
 .duel-ring { animation: duel-ring 360ms var(--ease) both; }
 
+/* The mode preview on the empty home screen (components/arena/BattleCast, LoopCast, ModeCast). All of these are `backwards`, not `both`, for the
+   reason given at .rise: the element's normal state is the end state, and a finished animation must not leave a stacking context behind.
+   .cast-pop  an orb arrives: it rises from small with a little overshoot. Each gets its own animation-delay, so a row of them pops in one by one.
+   .cast-in   the whole preview slides in from beside UltraPal.
+   .cast-spin an orb turns once, all the way round (360 degrees), swelling a little at the middle of the turn. One at a time, in the Loop preview.
+   .seg-pulse a part of a ring blinks twice to say "this one". */
+@keyframes cast-pop { 0% { opacity: 0; transform: translateY(10px) scale(0.4); } 60% { opacity: 1; transform: translateY(-3px) scale(1.08); } 100% { opacity: 1; transform: none; } }
+@keyframes cast-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes cast-spin { 0% { transform: rotate(0deg) scale(1); } 40% { transform: rotate(150deg) scale(1.16); } 100% { transform: rotate(360deg) scale(1); } }
+@keyframes seg-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+.cast-pop { animation: cast-pop 380ms var(--ease) backwards; }
+.cast-in { animation: cast-in var(--t-slow) var(--ease) backwards; }
+.cast-spin { animation: cast-spin 1000ms cubic-bezier(0.5, 0, 0.2, 1) backwards; }
+.seg-pulse { animation: seg-pulse 240ms ease-in-out 2; }
+
 /* Panels (D-SNAP). A panel that is shut stays in the page, out of sight, so opening and closing are one transition that can turn around half way.
    .slide-w     a docked panel (sidebar, chat, artifacts) from lg up. Only its width moves; its body, .slide-in, keeps the full width and flows past the
                 edge, so nothing inside reflows while the edge sweeps over it. data-open="false" shuts it, data-folded="true" leaves a .rail in its place.
