@@ -145,7 +145,7 @@ Full tables: [`docs/PALS.md`](docs/PALS.md).
 | One confident agent is a failure mode | **Battle and Loop**: opposite predictions, a blind judge, arithmetic damage |
 | Unattended agents are a spending risk | **Automations** with per-kind ceilings, no money, no self-replication, a schedule needs a time word from the human |
 | Nobody can see what an agent team is costing | **The collective context ring** and a panel per Pal |
-| Free models stall and rate-limit | Ten-model rotation with cool-downs, hedged races, and a rule that a model silent for 15 seconds is dropped for the next |
+| Free models stall and rate-limit | A ten-model roster across four providers with cool-downs, hedged races, and a rule that a model silent for 15 seconds is dropped for the next |
 
 ## How the money path stays honest
 
@@ -249,7 +249,7 @@ Only the database and the PayPal sandbox keys are required. Every other key turn
 
 ## A note from the builder
 
-UltraPals was built by a student in India, for this hackathon, on free tiers: free model APIs, free search quotas, a PayPal sandbox, a Neon free database and the Render credits the hackathon gave us (the live demo runs on the smallest always-on instance, about $7 a month). There are no GPUs and no paid keys behind it. That is why so much of the engineering is about *not wasting a call*: ten-model rotation with cool-downs, hedged races, a deadline on silent models, ceilings on everything unattended.
+UltraPals was built by a student in India, for this hackathon, on free tiers: free model APIs, free search quotas, a PayPal sandbox, a Neon free database and the Render credits the hackathon gave us (the live demo runs on the smallest always-on instance, about $7 a month). There are no GPUs and no paid keys behind it. That is why so much of the engineering is about *not wasting a call*: a ten-model roster with cool-downs (the live site runs six of them, because the credit-funded gateway is switched off), hedged races, a deadline on silent models, ceilings on everything unattended.
 
 If a run is slow when you try it, it is almost always a free model having a bad minute, not the product. Try it again, or pick **Light** or **High** in the effort pill to lead with a different model. Thank you for spending time on it.
 
