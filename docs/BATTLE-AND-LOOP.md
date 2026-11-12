@@ -51,7 +51,7 @@ Score = **0.4 x counted facts** (sources cited, kinds of work, files, finishing 
 Every sentence on a match's hover card is generated from those numbers (`whyResult`), so each one is true.
 
 ### The preview on the home screen
-Switching the mode pill to Battle or Loop shows one orb per team or round beside UltraPal and plays a short demonstration once: Battle's fighters step up, hit and recoil (the real `buildBracket`, `duel` and `replay`), Loop's rounds each turn once while a five-part ring is drawn and a baton carries the weakest measure to the next. Its scores are fixed stand-ins (`lib/arena/preview.ts`), because nothing has run; the arithmetic and the stop rule are the real ones. The README walks through it with recordings.
+Switching the mode pill to Battle or Loop shows one orb per team or round beside UltraPal and plays a short demonstration once: Battle's fighters step up, hit and recoil (the real `buildBracket`, `duel` and `replay`) while the knockout bracket under them draws itself and fills in match by match, Loop's rounds each turn once while a five-part ring is drawn and a baton carries the weakest measure to the next. Its scores are fixed stand-ins (`lib/arena/preview.ts`), because nothing has run; the arithmetic and the stop rule are the real ones. The orbs are held on a frame rather than redrawn (the dot-spheres redraw hundreds of dots in script every frame, which a row of them cannot afford), so it stays smooth on a slow machine. The README walks through it with recordings.
 
 ### Screens
 

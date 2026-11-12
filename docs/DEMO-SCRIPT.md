@@ -79,7 +79,7 @@ If a run is slow or a model is down, switch the pill to **Light** or **Ultra** (
 |---|---|---|---|
 | 2:30 | The saved Case Desk result: **Sandbox checks (real calls to each test environment)**, a PayPal, Stripe and Square table | "Multiple sandboxes. One question, three payment rails. Real calls to Stripe test mode and Square's sandbox, read-only checks on PayPal's, every claim cited." | scroll to the table; the status of the run showed `Ran Stripe sandbox checks`, `Ran Square sandbox checks`, `Ran PayPal sandbox checks` |
 | 2:40 | A promise page; **Replay verdict** answering *identical* | "Money moves only through a pure function agents can't import. Replay: identical." | open the Newsroom promise, press **Replay verdict** |
-| 2:46 | The README test badge | "2,478 tests. 'Could not see' is always wait, never release." | scroll the README header |
+| 2:46 | The README test badge | "2,523 tests. 'Could not see' is always wait, never release." | scroll the README header |
 | 2:51 | Cut to the Render dashboard (`ultrapals`, *Live*), then the end card with the stack line below | "All of it live on Render, built by a student in India on free tiers. Try it." | end card, held for the last 4 seconds |
 
 **End card stack line** (text on screen, not spoken): Next.js 15 · TypeScript · Neon Postgres · Drizzle · Render (Singapore) · KERNEL cloud sandboxes · PayPal sandbox · Stripe test mode · Square sandbox · Groq GPT-OSS 120B · NVIDIA Nemotron · OpenRouter free models · Tavily + Exa · AG Studio · Bryntum
