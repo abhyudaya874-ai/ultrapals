@@ -23,7 +23,7 @@ The money pages and API would work on a serverless host (they are request/respon
 | Region | Singapore, next to the Neon database (`ap-southeast-1`) |
 | Disk | 1 GB at `/opt/render/project/src/.data`, so saved automations survive a redeploy |
 | Health check | `/api/capabilities` |
-| Deploys | automatic on every push to `main` of [the repo](https://github.com/abhyudaya874-ai/ultrapals) |
+| Deploys | from `main` of [the repo](https://github.com/abhyudaya874-ai/ultrapals). A service created from a public repo URL gets **no push webhook**, so a push does not deploy by itself: trigger one with `POST /v1/services/<id>/deploys` or the dashboard's *Manual Deploy*, or connect the GitHub app in the dashboard to get auto-deploy |
 | Its own address | `RENDER_EXTERNAL_URL`, which `lib/env.ts` uses as `APP_URL` when none is set, so PayPal's return URL and the app's calls to itself are right with no second pass |
 
 **Measured, not guessed:** a full 2-team Battle (two cloud computers, a judge and a writer) on this instance size peaked at **178 MB of the 512 MB**, with no restart. The API call is `GET /v1/metrics/memory?resource=<service id>`.
