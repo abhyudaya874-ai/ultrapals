@@ -51,7 +51,7 @@ If a run is slow or a model is down, switch the pill to **Light** or **Ultra** (
 
 | Time | On screen | Say | Do |
 |---|---|---|---|
-| 0:45 | The **Chat** pill becoming **Battle** | "One confident agent is the failure mode. So: Battle." | switch the mode; paste `Which is cheaper for a $0.25 purchase in the US, Stripe or Square? Use their published fee pages.` |
+| 0:45 | The **Chat** pill becoming **Battle**: four orbs pop in beside UltraPal and two trade hits | "One confident agent is the failure mode. So: Battle." | switch the mode and let the orbs play once; paste `Which is cheaper for a $0.25 purchase in the US, Stripe or Square? Use their published fee pages.` |
 | 0:50 | Team panels filling, one context ring per team, each ring's card naming a different model | "Teams argue opposite predictions on different model families, GPT-OSS on Groq, Nemotron on NVIDIA, each in its own cloud sandbox." | *fast-forward*; hover a team's ring once and read the model names off its card, whatever they are |
 | 1:01 | The bracket, then the hit animation | "A blind judge scores them, then a knockout. The fight is arithmetic, not animation." | open the saved Battle, **Bracket** tab |
 | 1:10 | **Results**: champion, score, "why it won" | "Every sentence on this screen is generated from the numbers, so every sentence is true." | **Results** tab, scroll slowly |
@@ -60,7 +60,7 @@ If a run is slow or a model is down, switch the pill to **Light** or **Ultra** (
 
 | Time | On screen | Say | Do |
 |---|---|---|---|
-| 1:20 | The saved Loop's rail of round orbs | "A Battle compares. A Loop improves." | open the saved Loop |
+| 1:20 | The **Loop** pill: five orbs pop in and each turns once in turn, then the saved Loop's rail of round orbs | "A Battle compares. A Loop improves." | open the saved Loop |
 | 1:26 | Round 2's orb flying in with a score and a change | "Each round attacks the weakest point of the best answer so far, and is told exactly what it must beat." | hover an orb for its popover |
 | 1:40 | The diff between rounds: scenario, score per measure, sites added and dropped | "We figured out 'it got better' is a claim, so the screen shows what changed: which measures moved, which sources were added." | point at the change chips |
 | 1:52 | The stop reason | "It stops when a score of eight isn't beaten, or two rounds go flat." | |
@@ -79,7 +79,7 @@ If a run is slow or a model is down, switch the pill to **Light** or **Ultra** (
 |---|---|---|---|
 | 2:30 | The saved Case Desk result: **Sandbox checks (real calls to each test environment)**, a PayPal, Stripe and Square table | "Multiple sandboxes. One question, three payment rails. Real calls to Stripe test mode and Square's sandbox, read-only checks on PayPal's, every claim cited." | scroll to the table; the status of the run showed `Ran Stripe sandbox checks`, `Ran Square sandbox checks`, `Ran PayPal sandbox checks` |
 | 2:40 | A promise page; **Replay verdict** answering *identical* | "Money moves only through a pure function agents can't import. Replay: identical." | open the Newsroom promise, press **Replay verdict** |
-| 2:46 | The README test badge | "2,255 tests. 'Could not see' is always wait, never release." | scroll the README header |
+| 2:46 | The README test badge | "2,478 tests. 'Could not see' is always wait, never release." | scroll the README header |
 | 2:51 | Cut to the Render dashboard (`ultrapals`, *Live*), then the end card with the stack line below | "All of it live on Render, built by a student in India on free tiers. Try it." | end card, held for the last 4 seconds |
 
 **End card stack line** (text on screen, not spoken): Next.js 15 · TypeScript · Neon Postgres · Drizzle · Render (Singapore) · KERNEL cloud sandboxes · PayPal sandbox · Stripe test mode · Square sandbox · Groq GPT-OSS 120B · NVIDIA Nemotron · OpenRouter free models · Tavily + Exa · AG Studio · Bryntum

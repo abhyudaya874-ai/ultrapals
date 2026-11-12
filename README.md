@@ -4,7 +4,7 @@
 A lead agent, specialist Pals with their own domains and effort levels, and one pure function that is the only thing allowed to move PayPal sandbox money.</p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-2%2C255%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-2%2C478%20passing-brightgreen">
   <img alt="invariants" src="https://img.shields.io/badge/mechanical%20invariants-10%2F10-brightgreen">
   <img alt="sandbox" src="https://img.shields.io/badge/PayPal-sandbox%20only-blue">
   <img alt="stack" src="https://img.shields.io/badge/Next.js%2015-TypeScript%20strict-black">
@@ -13,6 +13,43 @@ A lead agent, specialist Pals with their own domains and effort levels, and one 
 <p align="center"><a href="https://ultrapals.onrender.com"><b>Open the live demo</b></a> · <a href="docs/DEMO-SCRIPT.md">3-minute tour</a> · <a href="docs/README.md">All docs</a> · built for the PayPal AI Hackathon, November 2026</p>
 
 <p align="center"><img src="docs/img/01-home.png" alt="UltraPal home: a prompt box with an effort selector and a live context ring" width="900"></p>
+
+---
+
+## Walkthrough: every mode
+The pill at the bottom left of the prompt box picks the mode. **The picture above the title changes with it**: in Battle and Loop, UltraPal is joined by one orb for every team or round you pick, and they play a short, silent demonstration of how that mode works. It plays once each time you switch into the mode (press **Replay** to see it again).
+> The demonstration is an illustration. Nothing has run yet, so its scores are fixed stand-ins. What is real in it: the number of orbs, the bracket and its byes, the health arithmetic of every hit (the same `duel` and `replay` code the real Battle uses), and the rule each Loop round follows. A real run replaces the stand-ins with live teams and a blind judge.
+
+### Chat: one UltraPal
+Ask anything. UltraPal answers, sends out Pals when it needs them (research, a live browser, a terminal), and the context ring adds up the whole team while they work. Nothing else on the screen changes.
+
+### Battle: teams argue, a knockout picks one
+<p align="center"><img src="docs/img/mode-battle.gif" alt="Switching to Battle: four team orbs pop in, two step up and trade hits, health bars drop, the loser fades, the winner goes on" width="600"></p>
+
+1. Switch **Chat** to **Battle**. The title becomes *UltraPal Battle* and **one orb pops in per team**.
+2. Two teams step up onto the stage. Each **lunge, hit and recoil** is a frame of the real Battle replay: the orb is squashed along the line of the hit, a ring flashes where they touch, and a health bar drops by the damage on that measure (evidence, consistency, calibration, actionability, fit).
+3. The loser sinks and fades, the winner recovers a little health and goes on, and the last orb standing is lit as champion. With 3, 5 or 6 teams some orbs get a **bye**, exactly as in the bracket.
+4. Type a question and press send to run it for real: each team gets its own cloud computer and a different model family, the judge never sees persona names, and the fight is decided by arithmetic (see [`docs/BATTLE-AND-LOOP.md`](docs/BATTLE-AND-LOOP.md)).
+
+### Loop: each round must beat the last
+<p align="center"><img src="docs/img/mode-loop.gif" alt="Switching to Loop: five round orbs pop in; one at a time each turns once all the way round while its five-part ring is drawn; a baton carries the weakest measure to the next round" width="600"></p>
+
+1. Switch to **Loop**. **One orb pops in per round** (the default is 5), each inside a ring of five parts, one for each measure the judge gives.
+2. **One orb at a time turns once, all the way round**. While it turns, its ring is drawn: each part fills in proportion to that measure.
+3. The part that came out lowest is marked. A **baton** ("aim: calibration") carries it across to the next orb, which shows a small tick where the last round left that measure. That round is told to beat it, and the part it was aimed at fills past the tick.
+4. The scores climb and slow down. The best round is crowned. With 6 rounds, round 6 does not beat round 5, so the Loop **stops with round 5**: the same rule the real Loop uses (a score of 8 or more that the next round did not beat).
+
+### The number is the number of orbs
+<p align="center"><img src="docs/img/mode-count.gif" alt="Changing the number of teams from 4 to 2, 6, 3 and 5: that many orbs pop in each time" width="600"></p>
+
+The count menu next to the mode pill (**2 teams**, **5 rounds** ...) sets how many orbs there are, and the sentence under the title says what that count means (*"6 teams argue opposite predictions, ...: quarter-finals with 2 byes"*). Orbs that were already there stay; new ones pop in; a different count starts the demonstration again.
+
+### Automations: Pals that work while you sleep
+Open **Automations** in the sidebar, or just ask in the chat with a time word in your own message (*"every morning, watch this page and tell me when the price changes"*). There are eight kinds, including a Battle and a Loop on a schedule, each with its own ceiling. A run cannot move money and cannot create more automations. See [section 5](#5-automations-pals-that-work-while-you-sleep-inside-ceilings-no-prompt-can-lift) below.
+<p align="center"><img src="docs/img/05-automations.png" alt="Automations screen" width="700"></p>
+
+### And the money path
+Ask UltraPal to *"Unlock the premium Newsroom story about micropayment economics and summarise it"*. A promise is created, the sandbox order is approved on a live browser, the pure verdict function decides, and **Replay verdict** gives the identical answer later. See [section 6](#6-the-money-path-in-the-open) below.
 
 ---
 
@@ -217,7 +254,7 @@ Per vendor detail, including what was and was not verified against a live accoun
 
 ## Tested
 
-* **2,255 tests in 141 files**, plus 10 mechanical invariant checks that fail the build (pure verdict, reason codes in sync, no floats on the money path, INR not payable, agents never call `computeVerdict`, adapters use `guard()`, sandbox only, no `any`, protected files keep their markers).
+* **2,478 tests in 143 files**, plus 10 mechanical invariant checks that fail the build (pure verdict, reason codes in sync, no floats on the money path, INR not payable, agents never call `computeVerdict`, adapters use `guard()`, sandbox only, no `any`, protected files keep their markers).
 * The verdict table, money maths, the arena (blind judge, bracket, duel), the automation ceilings, the cite-or-die verifiers, the event reducer and the context maths are all pure and tested without a network.
 * **We also ran it.** Tests did not find these; running did, and each is now a regression test: a paced display queue that froze after the first burst of events, a context ring that fell silent while a model was slow to answer, a hover card that closed whenever text streamed, a scheduling gate that fired on "a few cents each".
 * Not tested, said plainly: live vendor calls (they depend on keys and free tiers), and sandbox behaviour in production. See [`docs/TESTING.md`](docs/TESTING.md).

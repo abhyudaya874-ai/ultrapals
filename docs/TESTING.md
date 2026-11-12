@@ -1,6 +1,6 @@
 # Testing
 
-**2,255 tests in 141 files, plus 10 mechanical invariant checks and a production build, all behind one command.** This page says what that covers, how we checked the parts tests cannot reach, and what is not tested.
+**2,478 tests in 143 files, plus 10 mechanical invariant checks and a production build, all behind one command.** This page says what that covers, how we checked the parts tests cannot reach, and what is not tested.
 
 ```bash
 npm run verify:fast   # invariants + typecheck + tests (about 10 s). After every edit.
@@ -22,18 +22,18 @@ npm run test:api                       # the Postman collection through newman, 
 
 A failing invariant names the line. The script says "do NOT edit this script to make it pass", and we did not.
 
-## What the 2,255 tests cover
+## What the 2,478 tests cover
 
 | Area | Files | Tests | What is pinned down |
 |---|---|---|---|
 | `lib/computer` | 25 | 356 | the agent loop's event reducer, model rotation and cool-downs, hedged races, the live token events, per-agent reports, delegation and its limits |
-| `lib/arena` | 14 | 266 | plan validation, personas, blind judge scrubbing, bracket and byes, the duel arithmetic, loop stopping and round diffs |
+| `lib/arena` | 15 | 425 | plan validation, personas, blind judge scrubbing, bracket and byes, the duel arithmetic, loop stopping and round diffs, and the home-screen mode preview (real bracket and duel with stand-in scores, every beat of both tapes, captions short enough to read) |
 | `lib/automations` | 8 | 253 | the eight kinds, per-kind ceilings, schedules, the "time word" gate, the page-watch parser |
 | `components/agent` | 13 | 205 | markdown and citations, the paced display queue, panel and tab model, image prep, suggestions |
 | `lib/pals` | 14 | 176 | cite-or-die verifiers, the ladder and the seal, SuperPal bars, Case Desk grids, `NOT_MEASURABLE` |
 | `lib/browse` | 4 | 135 | page snapshots, the SSRF guard, reading pages safely |
 | `lib/charts` | 3 | 116 | 22 chart types picked and fitted from table shape |
-| `components/shell`, `thread`, `orbs`, `arena`, `charts`, `ui`, `studio` | 16 | 277 | sidebar and palette logic, auto-scroll (`stick.ts`), effort themes, hover-card placement, the AG Studio chat adapter |
+| `components/shell`, `thread`, `orbs`, `arena`, `charts`, `ui`, `studio` | 17 | 341 | sidebar and palette logic, auto-scroll (`stick.ts`), effort themes, hover-card placement, the AG Studio chat adapter, the mode preview geometry (orb layout for 2 to 6, fighter poses, the Loop ring and baton) |
 | `lib/integrations` | 11 | 84 | Channel3, Zapier, Bryntum, KERNEL and PayPal parsers against recorded shapes; the spending guard wired into both places that create a cloud browser (with the SDK replaced) |
 | `lib/usage` | 4 | 76 | token estimates, context windows, the collective ring, the wording on the card |
 | `lib/budget` | 2 | 17 | the spending ledger (concurrent and per-day caps, a failed start still counts, stale records forgotten) and the daily gate (a person's share, then the whole server's) |

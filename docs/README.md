@@ -18,7 +18,7 @@ Start with the [top-level README](../README.md). Everything here goes one level 
 | Doc | Read it for |
 |---|---|
 | [SYSTEM.md](SYSTEM.md) | the two halves, the seven laws, the decision table, the state machine, storage, safety posture |
-| [TESTING.md](TESTING.md) | the gate, what 2,255 tests cover, what we checked by running it, what is not tested |
+| [TESTING.md](TESTING.md) | the gate, what 2,478 tests cover, what we checked by running it, what is not tested |
 | [INTEGRATIONS.md](INTEGRATIONS.md) | sponsor by sponsor: the slot, the method, the degraded path, what was and was not verified |
 | [DEPLOY.md](DEPLOY.md) | running it on Render, and why a serverless host does not fit |
 | [APIMATIC-LOG.md](APIMATIC-LOG.md) | how our PayPal Orders calls were checked against the generated SDK |
