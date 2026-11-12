@@ -4,13 +4,13 @@
 A lead agent, specialist Pals with their own domains and effort levels, and one pure function that is the only thing allowed to move PayPal sandbox money.</p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-2%2C227%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-2%2C255%20passing-brightgreen">
   <img alt="invariants" src="https://img.shields.io/badge/mechanical%20invariants-10%2F10-brightgreen">
   <img alt="sandbox" src="https://img.shields.io/badge/PayPal-sandbox%20only-blue">
   <img alt="stack" src="https://img.shields.io/badge/Next.js%2015-TypeScript%20strict-black">
 </p>
 
-<p align="center"><a href="LIVE_URL_PENDING"><b>Open the live demo</b></a> · <a href="docs/DEMO-SCRIPT.md">3-minute tour</a> · <a href="docs/README.md">All docs</a> · built for the PayPal AI Hackathon, November 2026</p>
+<p align="center"><a href="https://ultrapals.onrender.com"><b>Open the live demo</b></a> · <a href="docs/DEMO-SCRIPT.md">3-minute tour</a> · <a href="docs/README.md">All docs</a> · built for the PayPal AI Hackathon, November 2026</p>
 
 <p align="center"><img src="docs/img/01-home.png" alt="UltraPal home: a prompt box with an effort selector and a live context ring" width="900"></p>
 
@@ -33,7 +33,7 @@ PayPal has 439 million accounts and says "transaction margin dollar growth is ou
 
 ## Try it in 60 seconds
 
-Open the [live demo](LIVE_URL_PENDING) and paste one of these (they are also the suggestion chips on the home screen):
+Open the [live demo](https://ultrapals.onrender.com) and paste one of these (they are also the suggestion chips on the home screen):
 
 | Paste this | What you will see |
 |---|---|
@@ -206,7 +206,7 @@ Every vendor sits behind a `CAP_*` flag. Switched off, the product stays fully u
 | **AG Studio** | dashboard with custom widgets; an analyst agent that explains verdicts | on |
 | **Channel3** | resolves `price_at_most` conditions to the cheapest in-stock offer | on |
 | **Bryntum** | the Timeline: drag a bar and the due date moves | on |
-| **Render** | hosts the app | on (hosting). The durable-sweep adapter is built and tested, switched off |
+| **Render** | hosts the live demo: one web service in Singapore with a disk for automations | on. The Workflows sweep adapter is built and tested, switched off |
 | **Elastic** | precedent search with hybrid retrieval | built and tested, switched off |
 | **Zapier** | friendly email nudges over MCP | built and tested, switched off |
 | **Astropods** | a hosted Promise concierge agent | built and tested, switched off |
@@ -217,7 +217,7 @@ Per vendor detail, including what was and was not verified against a live accoun
 
 ## Tested
 
-* **2,227 tests in 137 files**, plus 10 mechanical invariant checks that fail the build (pure verdict, reason codes in sync, no floats on the money path, INR not payable, agents never call `computeVerdict`, adapters use `guard()`, sandbox only, no `any`, protected files keep their markers).
+* **2,255 tests in 141 files**, plus 10 mechanical invariant checks that fail the build (pure verdict, reason codes in sync, no floats on the money path, INR not payable, agents never call `computeVerdict`, adapters use `guard()`, sandbox only, no `any`, protected files keep their markers).
 * The verdict table, money maths, the arena (blind judge, bracket, duel), the automation ceilings, the cite-or-die verifiers, the event reducer and the context maths are all pure and tested without a network.
 * **We also ran it.** Tests did not find these; running did, and each is now a regression test: a paced display queue that froze after the first burst of events, a context ring that fell silent while a model was slow to answer, a hover card that closed whenever text streamed, a scheduling gate that fired on "a few cents each".
 * Not tested, said plainly: live vendor calls (they depend on keys and free tiers), and sandbox behaviour in production. See [`docs/TESTING.md`](docs/TESTING.md).
@@ -237,19 +237,19 @@ npx drizzle-kit migrate
 npm run dev                 # http://localhost:3000
 ```
 
-Only the database and the PayPal sandbox keys are required. Every other key turns one capability on, and a missing key turns it off cleanly. Deployment on Render: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Only the database and the PayPal sandbox keys are required. Every other key turns one capability on, and a missing key turns it off cleanly. Deployment on Render, what it costs and how it is capped: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Honest limits
 
 * **Sandbox is not production.** It proves the mechanism and the state machine. It does not prove fraud reduction or conversion.
 * **Free models are inconsistent.** The whole stack runs on free-tier APIs, so a run can be slow, and sometimes a provider is simply down (we watched one return 503 on every model while writing this). The app rotates, races and drops silent models, but it cannot make a free tier fast.
-* **There is no login.** Anyone who can reach the app can use it, inside hard ceilings: 6 messages a minute, 2 contests a minute, 8 automations, one automation run at a time.
+* **There is no login.** Anyone who can reach the app can use it, inside hard ceilings. Per address: 6 messages and 2 contests a minute. For everyone together, every day: 250 messages, 30 Battles or Loops, 150 cloud computers started and 6 alive at once (the code enforces these so a public link cannot run up anyone's bill; see [`docs/DEPLOY.md`](docs/DEPLOY.md)). If the day's budget is used up the app says so and frees up as the 24 hours roll over.
 * **Several SuperPal rows read `NOT_MEASURABLE`** until the matching sandbox key is supplied. That is by design.
 * **A fee question on the open web can come out unflattering to PayPal.** A real Battle we ran on "fee for a $0.25 purchase" crowned a team that found PayPal's fixed fee dominates a micropayment. The product reports what the sources say. That is the point of a cite-or-die exam.
 
 ## A note from the builder
 
-UltraPals was built by a student in India, for this hackathon, on free tiers: free model APIs, free search quotas, a PayPal sandbox, a Neon free database and the Render credits the hackathon gave us. There are no GPUs and no paid keys behind it. That is why so much of the engineering is about *not wasting a call*: ten-model rotation with cool-downs, hedged races, a deadline on silent models, ceilings on everything unattended.
+UltraPals was built by a student in India, for this hackathon, on free tiers: free model APIs, free search quotas, a PayPal sandbox, a Neon free database and the Render credits the hackathon gave us (the live demo runs on the smallest always-on instance, about $7 a month). There are no GPUs and no paid keys behind it. That is why so much of the engineering is about *not wasting a call*: ten-model rotation with cool-downs, hedged races, a deadline on silent models, ceilings on everything unattended.
 
 If a run is slow when you try it, it is almost always a free model having a bad minute, not the product. Try it again, or pick **Light** or **High** in the effort pill to lead with a different model. Thank you for spending time on it.
 

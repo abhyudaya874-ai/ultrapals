@@ -1,6 +1,6 @@
 # Testing
 
-**2,227 tests in 137 files, plus 10 mechanical invariant checks and a production build, all behind one command.** This page says what that covers, how we checked the parts tests cannot reach, and what is not tested.
+**2,255 tests in 141 files, plus 10 mechanical invariant checks and a production build, all behind one command.** This page says what that covers, how we checked the parts tests cannot reach, and what is not tested.
 
 ```bash
 npm run verify:fast   # invariants + typecheck + tests (about 10 s). After every edit.
@@ -22,7 +22,7 @@ npm run test:api                       # the Postman collection through newman, 
 
 A failing invariant names the line. The script says "do NOT edit this script to make it pass", and we did not.
 
-## What the 2,227 tests cover
+## What the 2,255 tests cover
 
 | Area | Files | Tests | What is pinned down |
 |---|---|---|---|
@@ -34,11 +34,12 @@ A failing invariant names the line. The script says "do NOT edit this script to 
 | `lib/browse` | 4 | 135 | page snapshots, the SSRF guard, reading pages safely |
 | `lib/charts` | 3 | 116 | 22 chart types picked and fitted from table shape |
 | `components/shell`, `thread`, `orbs`, `arena`, `charts`, `ui`, `studio` | 16 | 277 | sidebar and palette logic, auto-scroll (`stick.ts`), effort themes, hover-card placement, the AG Studio chat adapter |
-| `lib/integrations` | 10 | 77 | Channel3, Zapier, Bryntum, KERNEL and PayPal parsers against recorded shapes |
+| `lib/integrations` | 11 | 84 | Channel3, Zapier, Bryntum, KERNEL and PayPal parsers against recorded shapes; the spending guard wired into both places that create a cloud browser (with the SDK replaced) |
 | `lib/usage` | 4 | 76 | token estimates, context windows, the collective ring, the wording on the card |
+| `lib/budget` | 2 | 17 | the spending ledger (concurrent and per-day caps, a failed start still counts, stale records forgotten) and the daily gate (a person's share, then the whole server's) |
 | `lib/verdict.test.ts`, `lib/money.test.ts` | 2 | 60 | the whole decision table, integer money |
 | `reference/` | 11 | 126 | the starter pack's own copies of the verdict, money, adapters and agents |
-| everything else | 13 | 104 | research, swarm policy, proctor, SSE, route helpers |
+| everything else | 14 | 108 | research, swarm policy, proctor, SSE, environment parsing, route helpers |
 
 (`reference/` is the original build pack's code and tests. We keep it green but the live app is everything above it.)
 
@@ -47,6 +48,7 @@ A failing invariant names the line. The script says "do NOT edit this script to 
 A test that cannot fail is decoration. For the two behaviours behind the "stuck context ring", we broke the code on purpose and checked the suite noticed:
 
 * Remove the line that stops the first-word timer once a model starts talking: the test "does not hurry a model that is thinking" fails.
+* Remove the spending guard from `openBrowser` or from `observePage`: `kernel-budget.test.ts` fails (two tests for the first, one for the second).
 * Move the opening token report back to after the model has been asked: "reports the prompt before the model has even been asked" and "announces each model as it is tried" fail.
 
 ## What we checked by running it (not part of CI)
