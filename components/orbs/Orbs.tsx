@@ -65,8 +65,13 @@ const SHAPES = [undefined, cube, octahedron, torus, tetrahedron] as const;
 /**
  * A battle or loop agent: a Thinking Orb (a sphere of moving dots) in a gradient of its own, with a face. The gradient is painted by pointing the
  * dots' fill at an SVG gradient; the dots' own animation is the library's.
+ *
+ * The library redraws every dot, in script, on every frame: a few hundred for most states and about a thousand for a browser agent (it draws an
+ * arrow in them). That is fine for one orb and too much for a row of them. `paused` holds an orb on its current frame (it costs nothing, and is
+ * not redrawn, so changing it does not rebuild the orb), and `light` draws a sparser sphere in the plain-working look whatever the tool is,
+ * about a fifth of the work. The home screen's preview uses both.
  */
-export const BattleOrb = memo(function BattleOrb({ id, size = 56, state, tool, judging = false, winner = false, shape = 0, className, level }: { id: string; size?: number; state: "pending" | "running" | "ok" | "error"; tool: "research" | "browser" | "terminal"; judging?: boolean; winner?: boolean; shape?: number; className?: string; level?: Level }) {
+export const BattleOrb = memo(function BattleOrb({ id, size = 56, state, tool, judging = false, winner = false, shape = 0, className, level, paused = false, light = false }: { id: string; size?: number; state: "pending" | "running" | "ok" | "error"; tool: "research" | "browser" | "terminal"; judging?: boolean; winner?: boolean; shape?: number; className?: string; level?: Level; paused?: boolean; light?: boolean }) {
   const effort = useEffort(level);
   const gid = `g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const look = lookFor(id, "battle");
@@ -85,7 +90,7 @@ export const BattleOrb = memo(function BattleOrb({ id, size = 56, state, tool, j
       </svg>
       <span className={cn("absolute inset-[6%] rounded-full transition-shadow", winner && "ring-1 ring-white/40")} style={{ background: `radial-gradient(circle at 35% 30%, ${colors[1]}33, ${colors[0]}14 60%, transparent 75%)` }} />
       <span className="absolute inset-0 orb-gradient" style={{ ["--orb-fill" as string]: `url(#${gid})` }}>
-        <DotOrb state={thinkingState({ state, tool, judging })} size={size} density={size > 40 ? 1.1 : 0.85} dotSize={size > 40 ? 1.15 : 1.5} shape={sh} render={sh ? halftone : undefined} label={`${id}: ${state}`} />
+        <DotOrb state={thinkingState({ state, tool: light ? "terminal" : tool, judging })} size={size} density={light ? 0.55 : size > 40 ? 1.1 : 0.85} dotSize={light ? 1.6 : size > 40 ? 1.15 : 1.5} paused={paused} shape={sh} render={sh ? halftone : undefined} label={`${id}: ${state}`} />
       </span>
       <Eyes size={size} color={eyeOn(colors[1])} mood={judging ? "thinking" : moodOf(state)} interactive />
     </span>

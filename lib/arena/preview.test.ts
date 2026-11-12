@@ -88,6 +88,18 @@ describe("battlePreview: the real bracket and the real duel, with stand-in score
       it("plays the same way every time", () => {
         expect(JSON.stringify(battlePreview(n))).toBe(JSON.stringify(p));
       });
+      it("describes the whole bracket as a tree: the right number of rounds, each team once in the first round, byes with one source", () => {
+        let size = 2;
+        while (size < n) size *= 2;
+        expect(p.tree).toHaveLength(Math.log2(size));
+        expect(p.tree.map((r) => r.length)).toEqual(Array.from({ length: p.tree.length }, (_, i) => size / 2 ** (i + 1)));
+        const teams = p.tree[0].flatMap((m) => m.from.flatMap((f) => ("team" in f ? [f.team] : [])));
+        expect([...teams].sort()).toEqual(p.teams.map((t) => t.id).sort());
+        for (const m of p.tree.flat()) expect(m.from).toHaveLength(m.bye ? 1 : 2);
+        for (const m of p.tree.slice(1).flat()) expect(m.from.every((f) => "match" in f)).toBe(true);
+        expect(p.tree.flat().filter((m) => m.bye)).toHaveLength(p.byes.length);
+        expect(p.tree.at(-1)![0].label).toBe("Final");
+      });
     });
   }
   it("clamps a silly count rather than failing", () => {
@@ -148,6 +160,20 @@ describe("battleTape: the preview as beats", () => {
       });
       it("keeps every caption to one line", () => {
         for (const b of tape) expect(b.caption.length).toBeLessThanOrEqual(80);
+      });
+      it("knows which bracket matches are decided: byes from the first beat, each match the moment it ends, and all of them at the crown", () => {
+        const byes = p.tree.flat().filter((m) => m.bye);
+        expect(Object.keys(tape[0].decided).sort()).toEqual(byes.map((m) => m.id).sort());
+        p.matches.forEach((m, i) => {
+          const mine = tape.filter((b) => b.match === i);
+          expect(mine.slice(0, -1).every((b) => b.decided[m.id] === undefined)).toBe(true);
+          expect(mine.at(-1)!.decided[m.id]).toBe(m.winner);
+          expect(mine.every((b) => b.live === m.id)).toBe(true);
+        });
+        const crown = tape.find((b) => b.kind === "crown")!;
+        expect(Object.keys(crown.decided)).toHaveLength(p.tree.flat().length);
+        expect(crown.decided[p.tree.at(-1)![0].id]).toBe(p.champion);
+        expect(tape.filter((b) => b.kind !== "frame").every((b) => b.live === null)).toBe(true);
       });
       it("says in words who hit whom, on what", () => {
         const hit = tape.find((b) => b.frame?.hit);

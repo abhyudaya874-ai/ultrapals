@@ -61,3 +61,25 @@ export function useTape<T extends { ms: number; hold: number }>(tape: readonly T
   const i = Math.min(here.at, last);
   return { at: i, beat: tape[i], done: i >= last && here.cycle >= cycles - 1, cycle: here.cycle, still, replay };
 }
+
+/**
+ * How many of `count` things are on the page so far, when they are put there one every `stepMs` instead of all in one go. Building a dot-sphere
+ * orb is real work (a few hundred elements), so putting up six at once is a stall at the very moment the pop-in animation should start; one at a time
+ * keeps each frame short and is what the pop-in looks like anyway. Things already there stay when the count grows. With reduced motion, all at once.
+ */
+export function useStagger(count: number, stepMs: number): number {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (shown >= count) {
+      if (shown > count) setShown(count);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(count);
+      return;
+    }
+    const t = setTimeout(() => setShown((k) => Math.min(count, k + 1)), shown === 0 ? 0 : stepMs);
+    return () => clearTimeout(t);
+  }, [shown, count, stepMs]);
+  return Math.min(shown, count);
+}

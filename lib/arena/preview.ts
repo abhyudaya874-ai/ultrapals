@@ -71,12 +71,27 @@ export interface PreviewMatch {
   /** Everyone's health once the match is over (the winner has recovered a share of what it lost). */
   hpAfter: Record<string, number>;
 }
+/** What feeds one side of a bracket match: a team in the first round, or the winner of an earlier match. */
+export type TreeFrom = { team: string } | { match: string };
+/** One match of the bracket as a tree node, byes included. A bye has the one team that goes through as its only source. */
+export interface TreeMatch {
+  id: string;
+  /** 1 = first round; the last round is the final. */
+  round: number;
+  index: number;
+  /** "Quarter-final", "Semi-final", "Final". */
+  label: string;
+  bye: boolean;
+  from: TreeFrom[];
+}
 export interface BattlePreview {
   teams: PreviewTeam[];
   /** Left to right as the teams stand: the bracket's first-round order, so the first opponents are neighbours. */
   order: string[];
   /** In playing order. Byes and the third-place match are left out. */
   matches: PreviewMatch[];
+  /** The whole bracket, round by round (the third-place match is left out), for drawing it as a tree. */
+  tree: TreeMatch[][];
   /** Teams that skip the first round. */
   byes: string[];
   champion: string;
@@ -115,7 +130,11 @@ export function battlePreview(n: number): BattlePreview {
     }
   }
   const last = matches[matches.length - 1];
-  return { teams, order, matches, byes, champion: last.winner };
+  const tree: TreeMatch[][] = bracket.rounds.map((round) => round.map((m) => ({
+    id: m.id, round: m.round, index: m.index, label: m.label, bye: m.bye,
+    from: [m.a, m.b].flatMap((s): TreeFrom[] => (s.id ? [{ team: s.id }] : "winnerOf" in s.from ? [{ match: s.from.winnerOf }] : [])),
+  })));
+  return { teams, order, matches, tree, byes, champion: last.winner };
 }
 
 export interface BattleBeat {
@@ -129,6 +148,10 @@ export interface BattleBeat {
   hold: number;
   /** Teams still in the knockout during this beat. A team that has lost is not in it. */
   alive: string[];
+  /** The bracket matches that have a winner by now, with who it is. Byes are decided from the start. */
+  decided: Record<string, string>;
+  /** The bracket match being played in this beat. */
+  live: string | null;
   /** The health each team shows. */
   hp: Record<string, number>;
   /** One line saying what is happening. */
@@ -141,7 +164,9 @@ export function battleTape(p: BattlePreview): BattleBeat[] {
   const tape: BattleBeat[] = [];
   const hp: Record<string, number> = Object.fromEntries(p.teams.map((t) => [t.id, MAX_HP]));
   let alive = p.teams.map((t) => t.id);
-  tape.push({ kind: "gather", match: null, frame: null, ms: 0, hold: 900, alive: [...alive], hp: { ...hp }, caption: `${p.teams.length} teams, ${p.teams.length} opposite predictions` });
+  // a bye is decided by the bracket itself, so its team is through from the first beat
+  const decided: Record<string, string> = Object.fromEntries(p.tree.flat().filter((m) => m.bye).map((m) => [m.id, (m.from[0] as { team: string }).team]));
+  tape.push({ kind: "gather", match: null, frame: null, ms: 0, hold: 900, alive: [...alive], decided: { ...decided }, live: null, hp: { ...hp }, caption: `${p.teams.length} teams, ${p.teams.length} opposite predictions` });
   p.matches.forEach((m, i) => {
     const [na, nb] = [name(m.a), name(m.b)];
     for (const f of m.frames) {
@@ -149,13 +174,15 @@ export function battleTape(p: BattlePreview): BattleBeat[] {
       const caption = f.hit
         ? `${f.hit.by === "a" ? na : nb} hits ${f.hit.by === "a" ? nb : na} on ${f.hit.dim} (${f.hit.dealt.toFixed(1)})`
         : f.kind === "end" ? `${name(m.winner)} wins${m.duel.ko ? " by knockout" : ""}` : `${m.label}: ${na} against ${nb}`;
-      tape.push({ kind: "frame", match: i, frame: f, ms: f.ms, hold: f.hold, alive: [...alive], hp: shown, caption });
+      // the winner is through the moment the match is over, while the loser is still sinking
+      tape.push({ kind: "frame", match: i, frame: f, ms: f.ms, hold: f.hold, alive: [...alive], decided: f.kind === "end" ? { ...decided, [m.id]: m.winner } : { ...decided }, live: m.id, hp: shown, caption });
     }
+    decided[m.id] = m.winner;
     Object.assign(hp, m.hpAfter);
     alive = alive.filter((id) => id !== m.loser);
   });
-  tape.push({ kind: "crown", match: null, frame: null, ms: 420, hold: 1300, alive: [p.champion], hp: { ...hp }, caption: `${name(p.champion)} takes the knockout` });
-  tape.push({ kind: "rest", match: null, frame: null, ms: 0, hold: 1500, alive: [p.champion], hp: { ...hp }, caption: "In a real Battle, live teams run and a blind judge scores their reports" });
+  tape.push({ kind: "crown", match: null, frame: null, ms: 420, hold: 1300, alive: [p.champion], decided: { ...decided }, live: null, hp: { ...hp }, caption: `${name(p.champion)} takes the knockout` });
+  tape.push({ kind: "rest", match: null, frame: null, ms: 0, hold: 1500, alive: [p.champion], decided: { ...decided }, live: null, hp: { ...hp }, caption: "In a real Battle, live teams run and a blind judge scores their reports" });
   return tape;
 }
 

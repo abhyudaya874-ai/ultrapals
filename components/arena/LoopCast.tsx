@@ -5,7 +5,7 @@ import { loopPreview, loopTape, type RoundPreview } from "@/lib/arena/preview";
 import { DIMENSIONS } from "@/lib/arena/types";
 import { CastCaption, Fit } from "./CastParts";
 import { EASE, POP_STAGGER_MS, arcPath, baton, fillOffset, loopLayout, ringCentre, roundLook, segments, stageHeight, tickPath, valueAngle, type RoundLook } from "./cast";
-import { useTape } from "./useTape";
+import { useStagger, useTape } from "./useTape";
 
 /** Each of the five parts of a ring takes this long to draw, one after another, so the whole ring is drawn during the one turn of the orb (1000 ms). */
 const SWEEP_MS = 190;
@@ -45,12 +45,17 @@ function Ring({ size, round, before, look }: { size: number; round: RoundPreview
  * The preview you get when the mode is Loop. The picked number of round orbs pop in, in a row. Then each takes its turn: it is told which measure of the
  * round before to beat (a baton carries that across), turns once all the way round while its ring is drawn, and has its weakest measure marked for the
  * next one. The best round is crowned and, as in a real Loop, the loop stops when a later round does not beat a good one. The scores are stand-ins.
+ *
+ * It is kept light: the dot-spheres redraw hundreds of dots in script every frame, which a row of them cannot afford, so they are held on a frame
+ * (only the crowned one moves its dots, for the moment it is crowned); the turn itself is a transform, which the browser does. The orbs are put on
+ * the page one at a time and never rebuilt as they change turns.
  */
 export function LoopCast({ n, onPlaying }: { n: number; onPlaying?: (playing: boolean) => void }) {
   const preview = useMemo(() => loopPreview(n), [n]);
   const tape = useMemo(() => loopTape(preview), [preview]);
   const layout = useMemo(() => loopLayout(n), [n]);
   const { beat, done, still, replay } = useTape(tape, { cycles: 1 });
+  const ready = useStagger(preview.rounds.length, POP_STAGGER_MS);
   useEffect(() => {
     onPlaying?.(!done);
     return () => onPlaying?.(false);
@@ -68,16 +73,17 @@ export function LoopCast({ n, onPlaying }: { n: number; onPlaying?: (playing: bo
             <span key={r.round} aria-hidden className={`absolute h-px ${roundLook(beat, r.round, preview.bestRound).aimed ? "bg-fg-dim" : "bg-line"}`} style={{ left: i * pitch + ring + 4, width: pitch - ring - 8, top: lane + ring / 2, transition: "background-color 240ms" }} />
           ))}
           {preview.rounds.map((r, i) => {
+            if (i >= ready) return null;
             const look = roundLook(beat, r.round, preview.bestRound);
             const ended = beat.kind === "crown" || beat.kind === "rest";
             const opacity = ended ? (look.crowned ? 1 : look.spent ? 0.35 : 0.6) : look.drawn || look.spinning || look.aimed ? 1 : 0.5;
             return (
               <div key={r.round} data-testid="loop-orb" data-round={r.round} data-spinning={look.spinning} className="absolute top-0" style={{ left: i * pitch, width: ring, height: layout.height, transition: `left 420ms ${EASE}` }}>
-                <div className="cast-pop relative size-full" style={{ animationDelay: `${i * POP_STAGGER_MS}ms` }}>
+                <div className="cast-pop relative size-full">
                   <div className="absolute left-0" style={{ top: lane, width: ring, height: ring, opacity, transition: `opacity 300ms ${EASE}` }}>
                     <Ring size={ring} round={r} before={i > 0 ? preview.rounds[i - 1] : null} look={look} />
                     <div className={`absolute flex rounded-full ${look.spinning ? "cast-spin" : ""} ${look.crowned ? "shadow-[0_0_0_1px_rgba(255,255,255,0.45),0_0_20px_rgba(255,255,255,0.2)]" : ""}`} style={{ left: (ring - orb) / 2, top: (ring - orb) / 2, width: orb, height: orb }}>
-                      <BattleOrb id={r.orb} size={orb} state={look.spinning ? "running" : look.drawn ? "ok" : "pending"} tool={r.tool} winner={look.crowned} />
+                      <BattleOrb id={r.orb} size={orb} state="running" tool={r.tool} winner={look.crowned} light paused={!look.crowned || done} />
                     </div>
                   </div>
                   <div className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center leading-none" style={{ top: lane + ring + 5 }}>

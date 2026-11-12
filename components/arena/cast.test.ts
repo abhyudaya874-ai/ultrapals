@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { battlePreview, battleTape, loopPreview, loopTape } from "@/lib/arena/preview";
 import { DIMENSIONS } from "@/lib/arena/types";
-import { CAPTION_H, arcPath, baton, battleLayout, castHeight, contactLeft, fighterPlace, fillOffset, heroLine, heroTitle, loopLayout, polar, reachPx, ringCentre, roundLook, segments, slotLeft, stageHeight, standLeft, teamLook, tickPath, valueAngle } from "./cast";
+import { CAPTION_H, CHAMPION_ROW, LEVEL_H, arcPath, baton, battleLayout, castHeight, contactLeft, fighterPlace, fillOffset, heroLine, heroTitle, lineState, loopLayout, polar, reachPx, ringCentre, roundLook, segments, slotLeft, stageHeight, standLeft, teamLook, tickPath, treeGeometry, valueAngle } from "./cast";
 
 const COUNTS = [2, 3, 4, 5, 6];
 const num = (s: string, re: RegExp): number => Number(re.exec(s)![1]);
@@ -22,7 +22,8 @@ describe("battleLayout: 2 to 6 orbs in the same space", () => {
       const l = battleLayout(n);
       expect(standLeft(l, "a")).toBeGreaterThanOrEqual(0);
       expect(standLeft(l, "b") + l.size).toBeLessThanOrEqual(l.box);
-      expect(l.height).toBe(l.lift + l.size + 34);
+      expect(l.treeTop).toBeGreaterThanOrEqual(l.lift + l.size + 28); // under the names
+      expect(l.height).toBe(l.treeTop + l.treeHeight);
     }
   });
   it("clamps a silly count", () => {
@@ -107,6 +108,98 @@ describe("teamLook", () => {
     expect(teamLook(crown, p.champion, false, p.champion)).toMatchObject({ opacity: 1, glow: true });
     const other = p.teams.find((t) => t.id !== p.champion)!.id;
     expect(teamLook(crown, other, false, p.champion)).toMatchObject({ opacity: 0.2, glow: false });
+  });
+});
+
+describe("the knockout tree under the orbs", () => {
+  for (const n of COUNTS) {
+    const p = battlePreview(n);
+    const l = battleLayout(n);
+    const g = treeGeometry(l, p.order, p.tree);
+    describe(`${n} teams`, () => {
+      it("has as many rounds as the knockout needs, and a tree that fits under the orbs", () => {
+        expect(l.levels).toBe(p.tree.length);
+        expect(l.treeHeight).toBe(l.levels * LEVEL_H + CHAMPION_ROW);
+        for (const node of g.nodes) {
+          expect(node.x).toBeGreaterThanOrEqual(0);
+          expect(node.x).toBeLessThanOrEqual(l.box);
+          expect(node.y).toBeGreaterThan(l.treeTop);
+          expect(node.y).toBeLessThan(l.height);
+        }
+        expect(g.champion.y).toBeLessThanOrEqual(l.height);
+      });
+      it("puts every match half way between the things that feed it, and each round lower than the one before", () => {
+        const at = new Map(g.nodes.map((x) => [x.id, x]));
+        for (const m of p.tree.flat()) {
+          const xs = m.from.map((f) => ("team" in f ? slotLeft(l, p.order.indexOf(f.team)) + l.size / 2 : at.get(f.match)!.x));
+          expect(at.get(m.id)!.x).toBeCloseTo(xs.reduce((a, b) => a + b, 0) / xs.length, 5);
+          for (const f of m.from) if ("match" in f) expect(at.get(f.match)!.y).toBeLessThan(at.get(m.id)!.y);
+        }
+      });
+      it("draws one line from every team to its first match and from every match to the next, and none else", () => {
+        expect(g.lines).toHaveLength(n + (p.tree.flat().length - 1));
+        expect(g.lines.filter((x) => x.team !== null).map((x) => x.team).sort()).toEqual([...p.order].sort());
+      });
+      it("starts each team's line at the centre of its orb, under its name", () => {
+        for (const line of g.lines.filter((x) => x.team !== null)) {
+          const cx = slotLeft(l, p.order.indexOf(line.team!)) + l.size / 2;
+          expect(line.d.startsWith(`M ${cx.toFixed(1)} ${l.treeTop.toFixed(1)}`)).toBe(true);
+        }
+      });
+      it("gives a bye one straight line, and joins every real match from two sides", () => {
+        for (const m of p.tree.flat()) {
+          const own = g.lines.filter((x) => x.to === m.id);
+          expect(own).toHaveLength(m.bye ? 1 : 2);
+          if (m.bye) expect(own[0].d).not.toContain("H");
+        }
+      });
+      it("ends in one final, with the champion directly under it", () => {
+        const final = g.nodes.filter((x) => x.round === l.levels);
+        expect(final).toHaveLength(1);
+        expect(final[0].label).toBe("Final");
+        expect(g.champion.x).toBe(final[0].x);
+        expect(g.champion.y).toBeGreaterThan(final[0].y);
+      });
+    });
+  }
+});
+
+describe("lineState: which lines of the tree are lit in a beat", () => {
+  const p = battlePreview(4);
+  const l = battleLayout(4);
+  const g = treeGeometry(l, p.order, p.tree);
+  const tape = battleTape(p);
+  const first = p.matches[0];
+  const state = (b: (typeof tape)[number], to: string, team?: string) => lineState(b, g.lines.find((x) => x.to === to && (team ? x.team === team : x.team === null))!);
+  it("lights nothing before anything is played", () => {
+    for (const line of g.lines) expect(lineState(tape[0], line)).toBe("idle");
+  });
+  it("lights both teams' lines while their match is on", () => {
+    const b = tape.find((x) => x.live === first.id)!;
+    expect(state(b, first.id, first.a)).toBe("live");
+    expect(state(b, first.id, first.b)).toBe("live");
+  });
+  it("lights the winner's line and dims the loser's once the match is over", () => {
+    const end = tape.find((x) => x.live === first.id && x.frame?.kind === "end")!;
+    expect(state(end, first.id, first.winner)).toBe("won");
+    expect(state(end, first.id, first.loser)).toBe("lost");
+  });
+  it("lights the line up to the next match as soon as the winner is known, and dims it if that winner then loses", () => {
+    const final = p.matches.at(-1)!;
+    const finalLines = g.lines.filter((x) => x.to === final.id);
+    const through = finalLines.find((x) => x.from === first.id)!;
+    const after = tape.find((x) => x.decided[first.id] && x.live !== final.id && x.decided[p.matches[1].id] === undefined)!;
+    expect(lineState(after, through)).toBe("won");
+    const crown = tape.find((x) => x.kind === "crown")!;
+    const fed = finalLines.map((x) => [x, p.matches.find((m) => m.id === x.from)!.winner] as const);
+    for (const [line, who] of fed) expect(lineState(crown, line)).toBe(who === p.champion ? "won" : "lost");
+  });
+  it("has every team's line settled by the end: one bright per match, one dim", () => {
+    const end = tape.at(-1)!;
+    for (const m of p.tree.flat().filter((x) => !x.bye)) {
+      const own = g.lines.filter((x) => x.to === m.id).map((x) => lineState(end, x));
+      expect(own.sort()).toEqual(["lost", "won"]);
+    }
   });
 });
 
@@ -275,10 +368,10 @@ describe("the five-part ring", () => {
 
 describe("heroTitle and heroLine: the words over and under the preview", () => {
   const m = (kind: "chat" | "battle" | "loop", n: number) => ({ kind, n, plan: "auto" as const });
-  it("names the mode in the title, except in chat", () => {
+  it("is UltraPal (one agent) in chat, and UltraPals (the team) with the mode's name in Battle and Loop", () => {
     expect(heroTitle(m("chat", 4), "UltraPal")).toBe("UltraPal");
-    expect(heroTitle(m("battle", 4), "UltraPal")).toBe("UltraPal Battle");
-    expect(heroTitle(m("loop", 5), "UltraPal")).toBe("UltraPal Loop");
+    expect(heroTitle(m("battle", 4), "UltraPal")).toBe("UltraPals Battle");
+    expect(heroTitle(m("loop", 5), "UltraPal")).toBe("UltraPals Loop");
   });
   it("is the normal line in chat", () => {
     expect(heroLine(m("chat", 4), "normal")).toBe("normal");

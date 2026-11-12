@@ -103,6 +103,11 @@ textarea[aria-label="Message UltraPal"]:focus-visible { outline: none; }
 .cast-in { animation: cast-in var(--t-slow) var(--ease) backwards; }
 .cast-spin { animation: cast-spin 1000ms cubic-bezier(0.5, 0, 0.2, 1) backwards; }
 .seg-pulse { animation: seg-pulse 240ms ease-in-out 2; }
+/* The Battle preview's knockout tree: a line draws itself from its start (the path is measured as length 1), and the match being played breathes. */
+@keyframes tree-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes tree-live { 0%, 100% { opacity: 0.9; transform: scale(0.8); } 50% { opacity: 0.25; transform: scale(1.15); } }
+.tree-draw { stroke-dasharray: 1; animation: tree-draw 520ms var(--ease) backwards; }
+.tree-live { animation: tree-live 1000ms ease-in-out infinite; }
 
 /* Panels (D-SNAP). A panel that is shut stays in the page, out of sight, so opening and closing are one transition that can turn around half way.
    .slide-w     a docked panel (sidebar, chat, artifacts) from lg up. Only its width moves; its body, .slide-in, keeps the full width and flows past the
