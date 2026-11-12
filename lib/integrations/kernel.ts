@@ -1,5 +1,6 @@
 import Kernel from "@onkernel/sdk";
 import { z } from "zod";
+import { releaseCloudComputer, startedCloudComputer, takeCloudComputer } from "@/lib/budget/kernel";
 import { getEnv } from "@/lib/env";
 import { degrade, guard, isOn } from "./registry";
 import type { AdapterResult, PageFact } from "./types";
@@ -16,8 +17,16 @@ export async function observePage(url: string, signal?: AbortSignal): Promise<Ad
   return guard("kernel", async () => {
     const safe = assertPublicHttpUrl(url);
     const kernel = new Kernel({ apiKey: getEnv().KERNEL_API_KEY });
-    const browser = await kernel.browsers.create({ headless: false, timeout_seconds: 60 }, { signal });
+    // The same spending guard as the live browser (lib/budget): a place is taken before anything is created, and given back when the page has been read.
+    const key = `observe-${crypto.randomUUID()}`;
+    const place = takeCloudComputer(key);
+    if (!place.ok) return degrade(`kernel: ${place.why}`);
+    const browser = await kernel.browsers.create({ headless: false, timeout_seconds: 60 }, { signal }).catch((e: unknown) => {
+      releaseCloudComputer(key);
+      throw e;
+    });
     const id = browser.session_id;
+    startedCloudComputer(key, id);
     try {
       let replayUrl: string | undefined;
       let replayId: string | undefined;
@@ -47,6 +56,7 @@ export async function observePage(url: string, signal?: AbortSignal): Promise<Ad
       return { ok: true, data: { url: safe, text: r.data.text, replayUrl } };
     } finally {
       await kernel.browsers.deleteByID(id).catch(() => undefined); // never browser.close(): that only drops the local connection
+      releaseCloudComputer(id);
     }
   });
 }

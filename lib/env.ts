@@ -34,6 +34,11 @@ const Schema = z.object({
   CAP_TAVILY: flag,
   CAP_EXA: flag,
   AUTOMATIONS_SCHEDULER: blank(z.enum(["on", "off"]).default("on")), // "off" = the in-process timer never starts (use POST /api/automations/tick instead)
+  // --- spending guards: what a public link may cost (see lib/budget). Cloud computers bill while alive; the others spend free-tier quota. ---
+  KERNEL_MAX_BROWSERS: blank(z.coerce.number().int().min(1).max(50).default(6)), // cloud computers alive at once, whole server
+  KERNEL_MAX_PER_DAY: blank(z.coerce.number().int().min(1).max(5000).default(150)), // cloud computers started in any 24 hours
+  DAILY_RUN_CAP: blank(z.coerce.number().int().min(1).max(100000).default(250)), // chat messages in any 24 hours, everyone together
+  DAILY_CONTEST_CAP: blank(z.coerce.number().int().min(1).max(10000).default(30)), // Battles and Loops in any 24 hours, everyone together
   AUTOMATIONS_TOKEN: opt(), // when set, POST /api/automations/tick requires it in x-automations-token
   PROCTOR_TOKEN: opt(), // when set, POST /api/proctor requires it in x-proctor-token
   CAP_STRIPE: flag,

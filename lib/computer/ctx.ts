@@ -142,11 +142,12 @@ export async function* ensureVm(ctx: SubCtx): AsyncGenerator<CEvent, NonNullable
   const id = `${agent}-vm`;
   yield { kind: "step", agent, id, label: "Starting a cloud computer", state: "running" };
   const t0 = Date.now();
-  session.vmOpening = deps.vm.open(ctx.signal).then((r) => { if (r.ok) { session.vm = r.data; session.vmCheckedAt = Date.now(); } return r.ok ? r.data : null; });
+  let why = "";
+  session.vmOpening = deps.vm.open(ctx.signal).then((r) => { if (r.ok) { session.vm = r.data; session.vmCheckedAt = Date.now(); } else why = r.reason; return r.ok ? r.data : null; });
   const vm = await session.vmOpening;
   session.vmOpening = null;
   if (!vm) {
-    yield { kind: "step", agent, id, label: "Starting a cloud computer", state: "error", detail: "could not start (is KERNEL on?)", ms: Date.now() - t0 };
+    yield { kind: "step", agent, id, label: "Starting a cloud computer", state: "error", detail: why && !/^kernel off/.test(why) ? why.replace(/^kernel:\s*/, "") : "could not start (is KERNEL on?)", ms: Date.now() - t0 };
     return null;
   }
   yield { kind: "step", agent, id, label: "Started a cloud computer", state: "ok", ms: Date.now() - t0 };

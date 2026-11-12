@@ -11,6 +11,8 @@ import { USER_TASK_STEPS } from "@/lib/computer/browser-agent";
 import { runMain } from "@/lib/computer/main-agent";
 import { endSession, getSession, hasSession } from "@/lib/computer/session";
 import { closeBrowser } from "@/lib/integrations/kbrowser";
+import { dailyGate } from "@/lib/budget/daily";
+import { getEnv } from "@/lib/env";
 import { allow } from "@/lib/research/rate-limit";
 
 export const runtime = "nodejs";
@@ -36,11 +38,16 @@ export async function POST(req: Request): Promise<Response> {
   if (!allow(`agent:${ipOf(req)}`, Date.now(), 6)) return Response.json({ error: "slow down: 6 messages per minute" }, { status: 429, headers: { "Retry-After": "30" } });
 
   const b = parsed.data;
+  const caps = { run: getEnv().DAILY_RUN_CAP, contest: getEnv().DAILY_CONTEST_CAP };
+  const day = dailyGate(ipOf(req), "run", caps);
+  if (!day.ok) return Response.json({ error: day.error }, { status: 429, headers: { "Retry-After": String(day.retryAfterSec) } });
   const mode = parseMode(b.mode);
   // A contest is checked before anything starts: its own rate limit, the room for it, and a plan that can run.
   let approved: ReturnType<typeof readPlan> | null = null;
   if (mode.kind !== "chat") {
     if (!allow(`arena:${ipOf(req)}`, Date.now(), 2)) return Response.json({ error: "slow down: 2 battles or loops per minute" }, { status: 429, headers: { "Retry-After": "30" } });
+    const contestDay = dailyGate(ipOf(req), "contest", caps);
+    if (!contestDay.ok) return Response.json({ error: contestDay.error }, { status: 429, headers: { "Retry-After": String(contestDay.retryAfterSec) } });
     if (contests >= MAX_CONTESTS) return Response.json({ error: "two battles or loops are already running: try again when one finishes" }, { status: 429, headers: { "Retry-After": "60" } });
     if (mode.plan !== "auto") {
       approved = readPlan(b.approved);

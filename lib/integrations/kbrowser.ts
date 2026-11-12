@@ -1,3 +1,4 @@
+import { releaseCloudComputer, startedCloudComputer, takeCloudComputer } from "@/lib/budget/kernel";
 import Kernel from "@onkernel/sdk";
 import { z } from "zod";
 import type { BrowserKey } from "@/lib/browse/actions";
@@ -80,6 +81,16 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Starts a visible browser and calibrates the mouse: a real click at a known screen point tells us where the page saw it. */
 export async function openBrowser(signal?: AbortSignal): Promise<AdapterResult<LiveBrowser>> {
   if (!isOn("kernel")) return degrade("kernel off");
+  // A browser bills while it is alive and a public link lets anyone start one: take a place first (lib/budget), give it back if the start fails.
+  const key = crypto.randomUUID();
+  const place = takeCloudComputer(key);
+  if (!place.ok) return degrade(`kernel: ${place.why}`);
+  const opened = await openBrowserWithPlace(signal);
+  if (opened.ok) startedCloudComputer(key, opened.data.id);
+  else releaseCloudComputer(key);
+  return opened;
+}
+async function openBrowserWithPlace(signal?: AbortSignal): Promise<AdapterResult<LiveBrowser>> {
   return guard("kernel", async () => {
     const k = client();
     // Kiosk mode: the live view shows only the page (the app draws its own address bar and buttons). The 10 minute inactivity limit is longer than
@@ -106,6 +117,7 @@ export async function openBrowser(signal?: AbortSignal): Promise<AdapterResult<L
 
 /** ALWAYS call this when a session ends; browsers bill while alive. Never `browser.close()`: that only drops the local connection. */
 export async function closeBrowser(id: string): Promise<void> {
+  releaseCloudComputer(id);
   if (isOn("kernel")) await client().browsers.deleteByID(id).catch(() => undefined);
 }
 
