@@ -5,7 +5,7 @@ import type { Deps } from "@/lib/computer/ctx";
 import type { CEvent } from "@/lib/computer/events";
 import { runMain } from "@/lib/computer/main-agent";
 import { isFinding } from "@/lib/computer/main-actions";
-import { benchedLong, callModel, orderModels, type ModelResult } from "@/lib/computer/model";
+import { benchedLong, callModel, callModelHedged, orderModels, type ModelResult } from "@/lib/computer/model";
 import { modelDepsFor, roundsFor, type ModelChoice } from "@/lib/computer/models";
 import { PAL_NAMES } from "@/lib/computer/pals";
 import { applyCEvent, newRun, subagents, type Run } from "@/lib/computer/run";
@@ -375,11 +375,20 @@ export async function* runArena(session: Session, input: ArenaInput, deps: Deps,
   yield { kind: "done", used: usedSources(text, session.sources.length), model: `${label} · ${PLAN_LABEL[input.planMode].title}`, ms: a.now() - t0 };
 }
 
+/**
+ * The most time drafting a plan may take, the question and the scenarios together. Measured live 2026-11-12: a draft takes 28 to 43 s, and with no limit a
+ * bad minute on the free providers (each model is tried in turn, up to 40 s each) left the screen on "Drafting the scenarios" for minutes. When the time is
+ * up the fixed line-up is used, which is what a draft that no model could write gets anyway.
+ */
+export const PLAN_MS = 55_000;
+
 /** Drafts a plan for the Review step (AI draft) or for Autopilot. Always returns a valid plan; `drafted` says whether a model wrote it. */
-export async function proposePlan(kind: Plan["kind"], n: number, scenario: string, deps: Deps, signal?: AbortSignal): Promise<{ plan: Plan; drafted: boolean }> {
-  const bres = await drain(callModel("plan", briefMessages(scenario), deps.model, { signal, round: 0, maxTokens: 300, accept: (t) => parseBrief(t, scenario).question !== scenario.trim().slice(0, 300) }));
+export async function proposePlan(kind: Plan["kind"], n: number, scenario: string, deps: Deps, signal?: AbortSignal, limitMs: number = PLAN_MS): Promise<{ plan: Plan; drafted: boolean }> {
+  const limit = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(limitMs)]);
+  // each call races the run's usual number of models (two on Standard), so one slow model does not set the pace
+  const bres = await drain(callModelHedged("plan", briefMessages(scenario), deps.model, { signal: limit, round: 0, maxTokens: 300, accept: (t) => parseBrief(t, scenario).question !== scenario.trim().slice(0, 300) }));
   const brief = parseBrief(bres.ok ? bres.text : null, scenario);
-  const res = await drain(callModel("plan", planMessages(kind, n, scenario, brief.question), deps.model, { signal, round: 1, maxTokens: 900 }));
+  const res = await drain(callModelHedged("plan", planMessages(kind, n, scenario, brief.question), deps.model, { signal: limit, round: 1, maxTokens: 900 }));
   const out = planFromDraft(res.ok ? res.text : null, kind, n, { question: brief.question });
   return { plan: { ...out.plan, success: out.plan.success || brief.success, horizon: out.plan.horizon || brief.horizon }, drafted: out.drafted };
 }

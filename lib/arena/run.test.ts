@@ -5,7 +5,7 @@ import { collect, mkDeps, mkSession, stream } from "@/lib/computer/fakes";
 import { applyCEvent, newRun } from "@/lib/computer/run";
 import { defaultPlan } from "./plan";
 import { callModel, resetCooldowns } from "@/lib/computer/model";
-import { findingsReport, pinsFor, runArena, type ArenaDeps } from "./run";
+import { findingsReport, pinsFor, proposePlan, runArena, type ArenaDeps } from "./run";
 
 const sse = (t: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\ndata: [DONE]\n\n`;
 // How good the blind judge finds each persona or scenario. The judge never sees persona names (they are scrubbed to "the analyst"), so a report
@@ -295,4 +295,45 @@ describe("findingsReport", () => {
     expect(r!.startsWith("PayPal India charges 4.4%")).toBe(true); // the findings come first, so a report read without a model still leads with one
   });
   it("is nothing when the team found nothing", () => expect(findingsReport([{ from: "research-1", to: "main", text: "Research failed: no answer" }])).toBeNull());
+});
+
+describe("proposePlan", () => {
+  // a connection that never speaks, and ends with an error when the caller aborts it (as a real fetch body does)
+  const silent = (async (provider: string, model: string, _m: unknown, o?: { signal?: AbortSignal }) => ({
+    ok: true as const,
+    data: { provider, model, body: new ReadableStream<Uint8Array>({ start(c) { o?.signal?.addEventListener("abort", () => c.error(new Error("aborted")), { once: true }); } }) },
+  })) as never;
+  it("falls back to the fixed line-up when no model answers within the limit, instead of waiting for ever", async () => {
+    resetCooldowns();
+    const deps = mkDeps(silent, { model: { open: silent, now: () => 1000, models: MODELS, hedge: 2 } as never });
+    const t0 = Date.now();
+    const out = await proposePlan("battle", 4, "Sell reports for 5 cents", deps, undefined, 200);
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(out.drafted).toBe(false);
+    expect(out.plan.slots).toHaveLength(4);
+    expect(out.plan.kind).toBe("battle");
+    resetCooldowns();
+  });
+  it("stops when the caller cancels", async () => {
+    resetCooldowns();
+    const deps = mkDeps(silent, { model: { open: silent, now: () => 1000, models: MODELS, hedge: 2 } as never });
+    const c = new AbortController();
+    setTimeout(() => c.abort(), 100);
+    const t0 = Date.now();
+    const out = await proposePlan("loop", 3, "Sell reports for 5 cents", deps, c.signal);
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(out.plan.slots).toHaveLength(3);
+    resetCooldowns();
+  });
+  it("uses the question a model wrote when one answers", async () => {
+    resetCooldowns();
+    const calls: { sys: string; user: string; model: string }[] = [];
+    const s = setup();
+    const deps = { ...s.deps, model: { ...s.deps.model, open: brain(calls), hedge: 2 } };
+    const out = await proposePlan("battle", 4, "Sell reports for 5 cents", deps as never);
+    expect(out.plan.question).toBe("Will fees stay near 12 percent?");
+    expect(out.plan.success).toBe("under 15 percent");
+    expect(out.plan.slots).toHaveLength(4);
+    resetCooldowns();
+  });
 });

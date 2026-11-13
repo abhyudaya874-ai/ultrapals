@@ -400,14 +400,15 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     setPendingPlan(base);
     const standard = (why: string) => setPendingPlan((p) => (p && ticket === planTicket.current ? { ...p, plan: defaultPlan(kind, m.n, { question }), note: `${why} This is the standard line-up. Edit it, then approve.` } : p));
     try {
-      const res = await fetch("/api/arena/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, n: m.n, scenario: message, model }) });
+      // the server gives up on a draft after 55 s; the screen waits a little longer than that, and then never forever
+      const res = await fetch("/api/arena/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, n: m.n, scenario: message, model }), signal: AbortSignal.timeout(70_000) });
       const j = (await res.json().catch(() => null)) as { plan?: Plan; drafted?: boolean; error?: string } | null;
       if (ticket !== planTicket.current) return;
       if (!res.ok || !j?.plan) return standard(j?.error ?? `The draft failed (${res.status}).`);
       const plan = j.plan;
       setPendingPlan((p) => (p ? { ...p, plan, drafted: !!j.drafted, note: j.drafted ? "Drafted by a model. Edit anything, then approve." : "No model could draft this. This is the standard line-up. Edit it, then approve." } : p));
     } catch (e) {
-      standard(e instanceof Error ? e.message : "The draft failed.");
+      standard(e instanceof DOMException && e.name === "TimeoutError" ? "The draft took too long." : e instanceof Error ? e.message : "The draft failed.");
     }
   }, [model]);
 
