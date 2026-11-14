@@ -11,16 +11,30 @@ export interface InImage {
   data: string;
 }
 
-/** Vision models, best first. Both are on the OpenRouter allowlist (isAllowedModel is checked again before any request). Probed live 2026-11-10: the first reads images. */
-export const VISION_MODELS = ["nvidia/nemotron-3.5-super-vl:free", "google/gemma-4-31b-it:free"] as const;
+type VisionProvider = "gemini" | "openrouter";
+/**
+ * Vision models, best first. Every one is on its provider's allowlist (isAllowedModel is checked again before any request). Gemini 3 Flash (Google's
+ * free tier) read a real screenshot of this app correctly in 6 s on 2026-11-14 (Flash-Lite took 30 s); the OpenRouter pair were probed 2026-11-10.
+ * Gemini 3 Flash has 20 free requests a day: once they are gone it answers 429 in about a second and the next model reads the picture.
+ */
+export const VISION_MODELS: readonly { provider: VisionProvider; model: string }[] = [
+  { provider: "gemini", model: "gemini-3-flash-preview" },
+  { provider: "openrouter", model: "nvidia/nemotron-3.5-super-vl:free" },
+  { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
+];
+const URL_OF: Record<VisionProvider, string> = {
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", // aistudio.google.com/docs/openai#image-understanding
+  openrouter: "https://openrouter.ai/api/v1/chat/completions",
+};
 
 const Reply = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string().nullish() }) })).min(1) });
 
-/** Pure. The request body for one vision call: the instruction, then each image as a data URL. */
-export function visionBody(model: string, instruction: string, images: readonly InImage[]) {
+/** Pure. The request body for one vision call: the instruction, then each image as a data URL. Gemini is told to think briefly (it thinks either way). */
+export function visionBody(model: string, instruction: string, images: readonly InImage[], provider: VisionProvider = "openrouter") {
   return {
     model,
     max_tokens: 900, // the reasoning models think before they answer; a small cap returns an empty reply
+    ...(provider === "gemini" ? { reasoning_effort: "low" } : {}),
     messages: [{ role: "user", content: [{ type: "text", text: instruction }, ...images.map((i) => ({ type: "image_url", image_url: { url: `data:${i.mime};base64,${i.data}` } }))] }],
   };
 }
@@ -32,32 +46,37 @@ export function visionText(json: unknown): string | null {
   return t ? t : null;
 }
 
+/** One model's reading of the pictures, inside its own provider's guard. */
+async function ask(provider: VisionProvider, model: string, instruction: string, images: readonly InImage[], signal?: AbortSignal): Promise<AdapterResult<{ text: string; model: string }>> {
+  return guard(provider, async () => {
+    const env = getEnv();
+    const key = (provider === "gemini" ? env.GEMINI_API_KEY : env.OPENROUTER_API_KEY) ?? "";
+    const res = await fetch(URL_OF[provider], {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify(visionBody(model, instruction, images, provider)),
+      signal: AbortSignal.any([AbortSignal.timeout(45_000), ...(signal ? [signal] : [])]),
+    });
+    if (!res.ok) return degrade(`${model}: http ${res.status}`);
+    const text = visionText(await res.json().catch(() => null));
+    return text ? { ok: true, data: { text, model: model.split("/").pop()?.replace(/:free$/, "") ?? model } } : degrade(`${model}: empty reply`);
+  });
+}
+
 /**
  * Asks a vision model what is in the user's pictures and returns plain text for the planner (which cannot see images).
- * Tries each vision model in order; one failing never fails the run: the caller shows "could not read the image".
+ * Tries each vision model in order, skipping a provider that is off; one failing never fails the run: the caller shows "could not read the image".
  */
 export async function describeImages(images: readonly InImage[], instruction: string, opts: { signal?: AbortSignal } = {}): Promise<AdapterResult<{ text: string; model: string }>> {
-  if (!isOn("openrouter")) return degrade("openrouter off: images cannot be read");
+  const usable = VISION_MODELS.filter((m) => isOn(m.provider) && isAllowedModel(m.provider, m.model));
+  if (usable.length === 0) return degrade("no vision provider on: images cannot be read");
   if (images.length === 0) return degrade("no images");
-  return guard("openrouter", async () => {
-    const key = getEnv().OPENROUTER_API_KEY ?? "";
-    let last = "no vision model answered";
-    for (const model of VISION_MODELS) {
-      if (!isAllowedModel("openrouter", model)) continue;
-      const signals = [AbortSignal.timeout(45_000), ...(opts.signal ? [opts.signal] : [])];
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify(visionBody(model, instruction, images)),
-        signal: AbortSignal.any(signals),
-      }).catch((e: unknown) => e);
-      if (opts.signal?.aborted) return degrade("cancelled");
-      if (!(res instanceof Response)) { last = `${model}: ${res instanceof Error ? res.message : "network error"}`; continue; }
-      if (!res.ok) { last = `${model}: http ${res.status}`; continue; }
-      const text = visionText(await res.json().catch(() => null));
-      if (text) return { ok: true, data: { text, model: model.split("/").pop()?.replace(/:free$/, "") ?? model } };
-      last = `${model}: empty reply`;
-    }
-    return degrade(last);
-  });
+  let last = "no vision model answered";
+  for (const m of usable) {
+    const r = await ask(m.provider, m.model, instruction, images, opts.signal);
+    if (opts.signal?.aborted) return degrade("cancelled");
+    if (r.ok) return r;
+    last = r.reason;
+  }
+  return degrade(last);
 }

@@ -83,7 +83,7 @@ Environment variables (names only; see `env.example`):
 | The money path | `DATABASE_URL`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV=sandbox` |
 | Scripted sandbox approval | `PAYPAL_SANDBOX_BUYER_EMAIL`, `PAYPAL_SANDBOX_BUYER_PASSWORD` (used on the cloud computer, never sent to a model) |
 | The cloud computer | `CAP_KERNEL=1`, `KERNEL_API_KEY` |
-| Models and search | `CAP_GROQ`, `GROQ_API_KEY`, `CAP_NVIDIA`, `NVIDIA_API_KEY`, `CAP_OPENROUTER`, `OPENROUTER_API_KEY`, `CAP_TAVILY`, `TAVILY_API_KEY`, `CAP_EXA`, `EXA_API_KEY` |
+| Models and search | `CAP_GROQ`, `GROQ_API_KEY`, `CAP_NVIDIA`, `NVIDIA_API_KEY`, `CAP_OPENROUTER`, `OPENROUTER_API_KEY`, `CAP_GEMINI`, `GEMINI_API_KEY` (keep its Google project off billing), `CAP_TAVILY`, `TAVILY_API_KEY`, `CAP_EXA`, `EXA_API_KEY` |
 | Spending limits (defaults shown) | `KERNEL_MAX_BROWSERS=6`, `KERNEL_MAX_PER_DAY=150`, `DAILY_RUN_CAP=250`, `DAILY_CONTEST_CAP=30` |
 | Build | `NODE_VERSION=22`, and the `NEXT_PUBLIC_*` variables for AG Studio (they are read at build time) |
 | Not set on purpose | `APP_URL` (the service uses `RENDER_EXTERNAL_URL`), `ANTHROPIC_API_KEY`, `STUDIO_LLM_*`, `BLUESMINDS_API_KEY`, `TOKENROUTER_API_KEY` |

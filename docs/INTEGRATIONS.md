@@ -24,8 +24,9 @@ One contract for all of them: `AdapterResult`, always through `guard()`, behind 
 | **Exa** | web search, run in parallel with Tavily | `POST api.exa.ai/search` (`x-api-key`, `contents.highlights`) | same | `CAP_EXA` |
 | **Groq** | primary free LLM (chat + agent action loops) | OpenAI-compatible `POST api.groq.com/openai/v1/chat/completions`, streamed | rotation falls through to OpenRouter | `CAP_GROQ` |
 | **OpenRouter** | fallback free LLM — `:free` suffix enforced in code, a paid model can never be requested | same shape, `openrouter.ai/api/v1` | agent reports the error inline | `CAP_OPENROUTER` |
+| **Google AI Studio** | free-tier Gemini models in the rotation (3.5 Flash-Lite leads a turn; 3 Flash races in Ultra and reads pictures first) — only ids marked "Free of charge" are allowlisted | OpenAI compatibility, `generativelanguage.googleapis.com/v1beta/openai`, Bearer key, streamed with counted tokens and a summarised think | rotation falls through to Groq, NVIDIA, OpenRouter | `CAP_GEMINI` |
 
-Free-plan limits are real (Groq ≈30 RPM / 8K TPM per model): `lib/computer/model.ts` rotates models and cools a
+Free-plan limits are real (Groq ≈30 RPM / 8K TPM per model; Gemini 15 a minute per Flash-Lite model and 20 a day for 3 Flash, from its own 429s): `lib/computer/model.ts` rotates models and cools a
 model down after 429; `lib/research/rate-limit.ts` caps requests per client. Keys live only in `.env.local`.
 
 ## Why the verdict never imports an adapter

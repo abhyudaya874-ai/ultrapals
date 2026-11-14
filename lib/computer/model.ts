@@ -27,22 +27,29 @@ export interface ModelDeps {
  * (Groq's published free limits, which its headers confirmed), so a Battle with three teams at once runs into them within a minute. NVIDIA's key
  * accepted eight requests at once without a refusal, and three of its models answer usable JSON in 3.5 to 9 s (Bolt, Super VL, Ultra). Bluesminds
  * refused one request of two sent together. OpenRouter's free models allow 50 requests a day on an account that has bought no credits.
- * So the leaders alternate between Groq's three separate limits and NVIDIA's two strongest models (`spread`), and the rest are the fallback, in
- * the order they are worth waiting for. The Nemotron Lightning copies think for 17 to 25 s before answering, so they come late.
+ * Google's free tier (measured 2026-11-14): 3.5 Flash-Lite answers in 0.8 to 2 s with a limit of 15 requests a minute per model for the project (a
+ * burst of 22 got four 429s saying so); 3.1 Flash-Lite stalled for 15 s, 70 s and a 503 on three tries out of nine; Gemini 3 Flash is the strongest
+ * but the free tier gives the project only 20 requests a day for it (its 429: quotaValue "20"), so it never leads a rotation and is kept for Ultra's
+ * race, as a late fallback and for pictures. When the day's 20 are gone the router benches it (cooldownFor, "daily") and Flash-Lite stands in.
+ * So the leaders alternate between Groq's three separate limits, Google's Flash-Lite and NVIDIA's two strongest (`spread`), and the rest are the
+ * fallback, in the order they are worth waiting for. The Nemotron Lightning copies think for 17 to 25 s before answering, so they come late.
  */
 export const defaultModelDeps: ModelDeps = {
   open: openChat,
   now: Date.now,
   hedge: 2,
   live: true,
-  spread: 5,
+  spread: 6,
   models: [
     { provider: "groq", model: "openai/gpt-oss-120b" },
+    { provider: "gemini", model: "gemini-3.5-flash-lite" },
     { provider: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b" },
     { provider: "groq", model: "qwen/qwen3.8-27b" },
     { provider: "nvidia", model: "nvidia/nemotron-3.5-super-vl-120b-a12b" },
     { provider: "groq", model: "openai/gpt-oss-20b" },
+    { provider: "gemini", model: "gemini-3.1-flash-lite" },
     { provider: "nvidia", model: "nvidia/nemotron-3.5-bolt-e4b" },
+    { provider: "gemini", model: "gemini-3-flash-preview" },
     { provider: "bluesminds", model: "nvidia/nemotron-3-ultra-550b-a55b" },
     { provider: "bluesminds", model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" },
     { provider: "nvidia", model: "nvidia/nemotron-3.5-lightning-30b-a3b" },
@@ -78,6 +85,11 @@ const THINKING_HEADROOM: Record<string, number> = {
   "nvidia/nemotron-3.5-super-vl": 2500,
   "nvidia/nemotron-3.5-super-vl-120b-a12b": 1500,
   "openrouter/free": 1500,
+  // Gemini thinks at "low" before it writes, and that thinking counts against max_tokens: 180 to 300 tokens on a planner reply (2026-11-14);
+  // a 120-token budget returned only thought summary
+  "gemini-3-flash-preview": 1000,
+  "gemini-3.5-flash-lite": 800,
+  "gemini-3.1-flash-lite": 800,
 };
 /** Pure. The token ceiling to ask this model for: what the call wants for its reply, plus the room the model uses to think. */
 export const tokenBudget = (model: string, asked: number): number => asked + (THINKING_HEADROOM[model.replace(/:free$/i, "")] ?? 0);

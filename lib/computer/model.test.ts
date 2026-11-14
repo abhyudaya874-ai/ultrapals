@@ -253,9 +253,12 @@ describe("the default roster", () => {
     expect(lead.some((m) => /lightning|nano/.test(m.model))).toBe(false);
     expect(r.models.slice(r.spread!).some((m) => /lightning/.test(m.model))).toBe(true);
   });
-  it("shares the lead between Groq's three limits and NVIDIA, so three teams at once do not all wait on Groq's 8,000 tokens a minute", () => {
+  it("shares the lead between Groq's three limits, Google's two fast models and NVIDIA, so three teams at once do not all wait on one provider", () => {
     const lead = r.models.slice(0, r.spread);
     expect(lead.filter((m) => m.provider === "groq")).toHaveLength(3);
+    // Flash-Lite (15 a minute) leads; Gemini 3 Flash has only 20 requests a day on the free tier, so it never takes a turn in the rotation
+    expect(lead.filter((m) => m.provider === "gemini").map((m) => m.model)).toEqual(["gemini-3.5-flash-lite"]);
+    expect(r.models.some((m) => m.model === "gemini-3-flash-preview")).toBe(true);
     expect(lead.filter((m) => m.provider === "nvidia").length).toBeGreaterThanOrEqual(2);
     // neighbours in the rotation are on different providers, so one step's refusal does not land the next step on the same limit
     for (let i = 1; i < lead.length; i++) expect(lead[i].provider).not.toBe(lead[i - 1].provider);
@@ -266,6 +269,22 @@ describe("the default roster", () => {
   it("has dropped the model this account's gateway no longer serves", () => {
     expect(r.models.some((m) => m.model.includes("muse-glimmer"))).toBe(false);
   });
+  it("takes turns: each of the next six steps starts on a different lead, Google's among them", () => {
+    const starts = Array.from({ length: 6 }, (_, k) => orderModels(r.models, k, 0, new Map(), r.spread)[0]);
+    expect(starts.map((m) => `${m.provider}:${m.model}`)).toEqual(r.models.slice(0, 6).map((m) => `${m.provider}:${m.model}`));
+    expect(starts[1]).toMatchObject({ provider: "gemini", model: "gemini-3.5-flash-lite" });
+  });
+  it("skips a Google model while its 429 says to wait, and uses it again once that has passed", () => {
+    const cool = new Map([["gemini:gemini-3.5-flash-lite", 1000 + cooldownFor("gemini http 429 retry 58s", false)]]);
+    expect(orderModels(r.models, 1, 1000, cool, r.spread)[0]).toMatchObject({ provider: "nvidia" });
+    expect(orderModels(r.models, 1, 1000, cool, r.spread).some((m) => m.model === "gemini-3.5-flash-lite")).toBe(false);
+    expect(orderModels(r.models, 1, 1000 + 58_501, cool, r.spread)[0]).toMatchObject({ provider: "gemini", model: "gemini-3.5-flash-lite" });
+  });
+  it("benches Gemini 3 Flash for an hour when its 20 a day are gone, so no Battle team is pinned to it, then tries again", () => {
+    const bench = cooldownFor("gemini http 429 retry 50050s daily", false);
+    expect(bench).toBe(3_600_000);
+    expect(benchedLong({ provider: "gemini", model: "gemini-3-flash-preview" }, 1000, new Map([["gemini:gemini-3-flash-preview", 1000 + bench]]))).toBe(true);
+  });
 });
 
 describe("tokenBudget: room to think", () => {
@@ -275,6 +294,8 @@ describe("tokenBudget: room to think", () => {
     expect(tokenBudget("nvidia/nemotron-3-ultra-550b-a55b:free", 900)).toBe(2400);
     expect(tokenBudget("openai/gpt-oss-120b", 900)).toBe(900);
     expect(tokenBudget("qwen/qwen3.8-27b", 1400)).toBe(1400);
+    // Gemini's think counts against max_tokens
+    for (const m of defaultModelDeps.models.filter((x) => x.provider === "gemini")) expect(tokenBudget(m.model, 900)).toBeGreaterThanOrEqual(1700);
   });
   it("is what a call really asks each model for, so a thinking model is not cut off mid-thought", async () => {
     const asked: Record<string, number | undefined> = {};

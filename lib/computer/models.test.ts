@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { callModelHedged, defaultModelDeps, orderModels, type ModelDeps } from "./model";
-import { BROWSING_FIRST, PICKABLE, browsingDeps, describeChoice, modelDepsFor, parseChoice, preferFirst, roundsFor } from "./models";
+import { familyOf } from "@/lib/pals/family";
+import { BROWSING_FIRST, LEVEL_INFO, PICKABLE, browsingDeps, describeChoice, modelDepsFor, parseChoice, preferFirst, roundsFor } from "./models";
 import { collect, scripted } from "./fakes";
 
 const base: ModelDeps = { ...defaultModelDeps, now: () => 1000 };
@@ -36,6 +37,22 @@ describe("modelDepsFor", () => {
     expect(ids(d)[0]).toBe(first);
     expect(d.hedge).toBe(hedge);
     expect(d.rotate).toBe(false);
+  });
+  it("every model a level puts first is on the server roster", () => {
+    for (const info of Object.values(LEVEL_INFO)) for (const id of info.first) expect(defaultModelDeps.models.some((m) => m.model === id), id).toBe(true);
+  });
+  it("Ultra races three model families at once, Google's among them", () => {
+    const d = modelDepsFor(base, { level: "ultra" });
+    expect(new Set(d.models.slice(0, d.hedge).map((m) => familyOf(m.model)))).toEqual(new Set(["nvidia", "openai", "google"]));
+  });
+  it("Light races two providers, so one provider's bad minute does not slow both racers", () => {
+    const d = modelDepsFor(base, { level: "light" });
+    expect(d.models.slice(0, 2).map((m) => m.provider)).toEqual(["groq", "gemini"]);
+  });
+  it("a Gemini model can be pinned by hand", () => {
+    const pin = { provider: "gemini", model: "gemini-3-flash-preview" } as const;
+    expect(parseChoice({ level: "standard", pin })).toEqual({ level: "standard", pin });
+    expect(ids(modelDepsFor(base, { level: "standard", pin }))[0]).toBe("gemini:gemini-3-flash-preview");
   });
   it("never drops a model (the blind check needs a second family)", () => {
     for (const level of ["light", "standard", "high", "ultra"] as const) expect(ids(modelDepsFor(base, { level })).sort()).toEqual(ids(base).sort());

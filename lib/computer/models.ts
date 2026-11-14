@@ -26,10 +26,12 @@ interface LevelInfo {
   rounds: number;
 }
 export const LEVEL_INFO: Record<Level, LevelInfo> = {
-  light: { label: "Light", lead: "GPT-OSS 20B", blurb: "for quick answers. Lowest usage.", first: ["openai/gpt-oss-20b", "qwen/qwen3.8-27b"], hedge: 2, rounds: 4 },
+  // Light races Groq's fastest model against Google's: two providers, so one provider's bad minute does not slow both racers
+  light: { label: "Light", lead: "GPT-OSS 20B", blurb: "for quick answers. Lowest usage.", first: ["openai/gpt-oss-20b", "gemini-3.5-flash-lite", "qwen/qwen3.8-27b"], hedge: 2, rounds: 4 },
   standard: { label: "Standard", lead: "Free model rotation", blurb: "for balanced speed and depth. Spreads the load across every provider.", first: [], hedge: 2, rounds: 6 },
-  high: { label: "High", lead: "GPT-OSS 120B", blurb: "for deeper reasoning on harder tasks. Higher usage.", first: ["openai/gpt-oss-120b", "nvidia/nemotron-3-ultra-550b-a55b"], hedge: 2, rounds: 6 },
-  ultra: { label: "Ultra", lead: "Nemotron 3 Ultra 550B", blurb: "for maximum effort and thoroughness. Races three models, plans up to 8 rounds. Highest usage.", first: ["nvidia/nemotron-3-ultra-550b-a55b", "openai/gpt-oss-120b"], hedge: 3, rounds: 8 },
+  high: { label: "High", lead: "GPT-OSS 120B", blurb: "for deeper reasoning on harder tasks. Higher usage.", first: ["openai/gpt-oss-120b", "nvidia/nemotron-3-ultra-550b-a55b", "gemini-3-flash-preview"], hedge: 2, rounds: 6 },
+  // Ultra's three racers are three model families: NVIDIA, OpenAI's open weights and Google
+  ultra: { label: "Ultra", lead: "Nemotron 3 Ultra 550B", blurb: "for maximum effort and thoroughness. Races three models, plans up to 8 rounds. Highest usage.", first: ["nvidia/nemotron-3-ultra-550b-a55b", "openai/gpt-oss-120b", "gemini-3-flash-preview"], hedge: 3, rounds: 8 },
 };
 
 /** The models a person can pin in "Custom". Mirrors the server roster; the server refuses anything not on it. */
@@ -43,6 +45,9 @@ export const PICKABLE: (ModelRef & { label: string; note: string })[] = [
   { provider: "bluesminds", model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron 3 Nano Omni 30B", note: "Bluesminds · reasoning" },
   { provider: "groq", model: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B", note: "Groq · fast, no thinking" },
   { provider: "openrouter", model: "google/gemma-4-31b-it:free", label: "Gemma 4 31B", note: "OpenRouter · free" },
+  { provider: "gemini", model: "gemini-3-flash-preview", label: "Gemini 3 Flash", note: "Google · free tier, 20 requests a day" },
+  { provider: "gemini", model: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", note: "Google · free tier" },
+  { provider: "gemini", model: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", note: "Google · free tier" },
 ];
 
 const same = (a: ModelRef, b: ModelRef): boolean => a.provider === b.provider && a.model === b.model;
@@ -97,7 +102,7 @@ export function describeChoice(choice: ModelChoice): { pill: string; title: stri
   return { pill: i.label, title: i.lead, blurb: i.blurb };
 }
 
-export const PROVIDERS: readonly ChatProvider[] = ["groq", "openrouter", "nvidia", "tokenrouter", "bluesminds"];
+export const PROVIDERS: readonly ChatProvider[] = ["groq", "openrouter", "nvidia", "tokenrouter", "bluesminds", "gemini"];
 /** Pure. Reads a stored or posted choice without trusting it. Anything malformed is Standard. */
 export function parseChoice(v: unknown): ModelChoice {
   if (!v || typeof v !== "object") return DEFAULT_CHOICE;

@@ -4,7 +4,7 @@ import type { CEvent } from "@/lib/computer/events";
 import { collect, mkDeps, mkSession, stream } from "@/lib/computer/fakes";
 import { applyCEvent, newRun } from "@/lib/computer/run";
 import { defaultPlan } from "./plan";
-import { callModel, resetCooldowns } from "@/lib/computer/model";
+import { callModel, defaultModelDeps, resetCooldowns } from "@/lib/computer/model";
 import { findingsReport, pinsFor, proposePlan, runArena, type ArenaDeps } from "./run";
 
 const sse = (t: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\ndata: [DONE]\n\n`;
@@ -266,6 +266,15 @@ describe("Loop: one team per round, different scenarios, until it is good enough
   });
 });
 
+describe("pinsFor on the server's own roster", () => {
+  it("a 3-team Battle (or 3 Loop rounds) starts on three model families: OpenAI's, Google's and NVIDIA's", () => {
+    const pins = pinsFor(defaultModelDeps.models, 3);
+    expect(pins.map((m) => `${m.provider} ${m.model}`)).toEqual(["groq openai/gpt-oss-120b", "gemini gemini-3.5-flash-lite", "nvidia nvidia/nemotron-3-ultra-550b-a55b"]);
+  });
+  it("a fourth team gets a fourth family before any family repeats", () => {
+    expect(pinsFor(defaultModelDeps.models, 4)[3]).toMatchObject({ provider: "groq", model: "qwen/qwen3.8-27b" });
+  });
+});
 describe("pinsFor", () => {
   const R = (...ids: string[]) => ids.map((x) => ({ provider: x.split(" ")[0], model: x.split(" ")[1] }));
   const roster = R("nvidia nvidia/ultra", "groq qwen/qwen3", "nvidia nvidia/super-vl", "bluesminds nvidia/ultra", "openrouter nvidia/ultra:free", "nvidia nvidia/bolt", "openrouter openrouter/free");

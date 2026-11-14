@@ -31,6 +31,7 @@ const Schema = z.object({
   CAP_NVIDIA: flag,
   CAP_TOKENROUTER: flag,
   CAP_BLUESMINDS: flag,
+  CAP_GEMINI: flag,
   CAP_TAVILY: flag,
   CAP_EXA: flag,
   AUTOMATIONS_SCHEDULER: blank(z.enum(["on", "off"]).default("on")), // "off" = the in-process timer never starts (use POST /api/automations/tick instead)
@@ -62,6 +63,7 @@ const Schema = z.object({
   NVIDIA_API_KEY: opt(),
   TOKENROUTER_API_KEY: opt(),
   BLUESMINDS_API_KEY: opt(),
+  GEMINI_API_KEY: opt(), // Google AI Studio; only free-tier models are allowlisted, and they stay free only while the key's project has no billing account
   TAVILY_API_KEY: opt(),
   EXA_API_KEY: opt(),
   STRIPE_SANDBOX_KEY: opt(), // SuperPal examiners (D-RIVAL): keys arrive later; blank = that row is NOT_MEASURABLE

@@ -57,6 +57,10 @@ export const WINDOWS: Readonly<Record<string, number>> = {
   "qwen/qwen3.8-27b": 131_072,
   "google/gemma-4-31b-it:free": 262_144,
   "openrouter/free": 200_000,
+  // inputTokenLimit from the Gemini API's own model list (GET v1beta/models, 2026-11-14)
+  "gemini-3-flash-preview": 1_048_576,
+  "gemini-3.5-flash-lite": 1_048_576,
+  "gemini-3.1-flash-lite": 1_048_576,
 };
 /** For a model nobody has listed: a common size, so a ring is never drawn against zero. */
 export const DEFAULT_WINDOW = 128_000;

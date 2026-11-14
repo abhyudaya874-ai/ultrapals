@@ -1,8 +1,12 @@
 import type { ModelRef } from "@/lib/computer/model";
 
-/** Pure. The model family from a vendor-prefixed id ("openai/gpt-oss-120b" -> openai). An id with no prefix is its own family. */
+/**
+ * Pure. The model family from a vendor-prefixed id ("openai/gpt-oss-120b" -> openai). Google's own API names its models with no prefix
+ * ("gemini-3-flash-preview"), and those are Google's, like OpenRouter's "google/gemma-4-31b-it:free". Any other id with no prefix is its own family.
+ */
 export const familyOf = (model: string): string => {
   const m = model.replace(/:free$/i, "");
+  if (/^(gemini|gemma)-/i.test(m)) return "google";
   return m.includes("/") ? m.split("/")[0].toLowerCase() : m.toLowerCase();
 };
 /** Pure. callModel returns the BARE model name; recover the family by finding it in the roster. Unknown = its own family. */
