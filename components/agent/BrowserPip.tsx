@@ -97,6 +97,14 @@ export function BrowserPip() {
     const el = box.current;
     if (el) setOff((o) => clampOffset(o, { w: el.offsetWidth, h: el.offsetHeight }, { w: window.innerWidth, h: window.innerHeight }));
   }, [pip.expanded, actions.length, view.kind, navError]);
+  useEffect(() => {
+    const fit = () => {
+      const el = box.current;
+      if (el) setOff((o) => clampOffset(o, { w: el.offsetWidth, h: el.offsetHeight }, { w: window.innerWidth, h: window.innerHeight }));
+    };
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
 
   const nav = useCallback(async (op: BrowserOp) => {
     if (!sessionId || navBusy) return;
@@ -151,11 +159,11 @@ export function BrowserPip() {
       aria-label="Live browser"
       data-testid="browser-pip"
       data-view={view.kind}
-      className={`${open ? "fade-in" : "fade-out pointer-events-none"} fixed bottom-4 right-4 z-[60] overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition-[width] duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] ${pip.expanded ? "w-[min(820px,calc(100vw-2rem),calc((100dvh-260px)*1.6))] min-w-[min(420px,calc(100vw-2rem))]" : "w-[236px]"}`}
+      className={`${open ? "fade-in" : "fade-out pointer-events-none"} fixed bottom-4 right-4 z-[60] flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-dock-line bg-surface shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition-[width] duration-[160ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] ${pip.expanded ? "w-[min(820px,calc(100vw-2rem))] min-w-[min(420px,calc(100vw-2rem))]" : "w-[236px]"}`}
       style={{ transform: `translate(${off.x}px, ${off.y}px)` }}
     >
       <div
-        className="flex h-9 cursor-grab touch-none select-none items-center gap-1.5 border-b border-line bg-surface-2/80 pl-3 pr-1 active:cursor-grabbing"
+        className="flex h-9 shrink-0 cursor-grab touch-none select-none items-center gap-1.5 border-b border-line bg-surface-2/80 pl-3 pr-1 active:cursor-grabbing"
         onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y }; }}
         onPointerMove={(e) => {
           const d = drag.current;
@@ -186,7 +194,7 @@ export function BrowserPip() {
         <AddressBar url={url} canBack={state?.canBack ?? false} canForward={state?.canForward ?? false} loading={navBusy} disabled={dead || !sessionId} error={navError} onGo={(address) => void nav({ op: "goto", address })} onOp={(op) => void nav({ op })} />
       )}
 
-      <div className="relative aspect-[16/10] w-full bg-black">
+      <div className="relative aspect-[16/10] min-h-[120px] w-full shrink bg-black">
         {showFrame && <iframe key={attempt} ref={frame} src={src} title="Live browser" allow="autoplay; clipboard-read; clipboard-write" className={`size-full ${pip.expanded ? "" : "pointer-events-none"}`} data-testid="live-view" />}
         {!playing && (
           <div className={`absolute inset-0 grid place-items-center px-5 text-center ${view.kind === "connecting" ? "pointer-events-none bg-black/70" : "bg-surface"}`} data-testid="view-note" aria-live="polite">
@@ -201,7 +209,7 @@ export function BrowserPip() {
         {!pip.expanded && !dead && <button type="button" onClick={() => setPip({ expanded: true })} aria-label="Expand the browser" className="absolute inset-0 cursor-zoom-in" />}
       </div>
 
-      <ul className="space-y-0.5 px-3 py-2" data-testid="pip-actions" aria-live="polite">
+      <ul className="shrink-0 space-y-0.5 px-3 py-2" data-testid="pip-actions" aria-live="polite">
         {actions.length === 0 && <li className="text-[12px] text-fg-dim">{busy ? "Watching the page…" : dead ? "Nothing is running." : "No browser actions yet"}</li>}
         {actions.map((a) => (
           <li key={a.id} className="rise flex items-center gap-2 text-[12px] text-fg-muted" title={a.detail ? `${a.label} — ${a.detail}` : a.label}>

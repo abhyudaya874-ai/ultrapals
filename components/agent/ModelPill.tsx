@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { effortOf } from "@/components/orbs/effort";
 import { useDismiss } from "@/components/thread/Dock";
+import { BrandIcon } from "@/components/ui/BrandIcon";
 import { IconCheck, IconChevronDown, IconChevronRight } from "@/components/ui/icons";
-import { LEVELS, LEVEL_INFO, PICKABLE, describeChoice, type Level, type ModelChoice } from "@/lib/computer/models";
+import { fitPopover, type PopoverFit } from "@/components/ui/popover-fit";
+import { LEVELS, LEVEL_INFO, describeChoice, isPicked, makerOf, pickList, type Level, type ModelChoice } from "@/lib/computer/models";
 
 /** Pure. How many of the nine dots are lit for a choice: the pill shows effort at a glance. */
 export const litDots = (c: ModelChoice): number => (c.pin ? 5 : [2, 4, 6, 9][LEVELS.indexOf(c.level)]);
@@ -85,22 +87,37 @@ export function ModelPill({ value, onChange, disabled, allowCustom = true }: { v
   const [custom, setCustom] = useState(false);
   const [dir, setDir] = useState<0 | 1 | -1>(0); // which way the last switch between the two views went; 0 on opening, so the popover itself does the animating
   const box = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  // Which side of the pill the popover opens on, and how tall it may be there. The prompt box sits in the middle of the home screen and low in a
+  // docked chat, and a list opened upward from the middle would leave through the top of the window.
+  const [fit, setFit] = useState<PopoverFit>({ side: "above", maxHeight: 480 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = button.current?.getBoundingClientRect();
+      if (r) setFit(fitPopover({ anchorTop: r.top, anchorBottom: r.bottom, viewportH: window.innerHeight, want: custom ? 470 : 260 }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, custom]);
   useDismiss(open, () => { setOpen(false); setCustom(false); }, box);
   const d = describeChoice(value);
   return (
     <div className="relative" ref={box}>
-      <button type="button" disabled={disabled} onClick={() => { setOpen((o) => !o); setCustom(false); setDir(0); }} aria-haspopup="dialog" aria-expanded={open} data-testid="model-pill" title="Model and effort"
+      <button ref={button} type="button" disabled={disabled} onClick={() => { setOpen((o) => !o); setCustom(false); setDir(0); }} aria-haspopup="dialog" aria-expanded={open} data-testid="model-pill" title="Model and effort"
         className="press inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-2/70 pl-2.5 pr-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50">
         <span style={{ color: effortOf(value.level).color }} className="transition-colors duration-150"><Dots lit={litDots(value)} /></span>
+        {value.pin && d.maker && <BrandIcon maker={d.maker} className="size-4 text-fg" />}
         <span className="max-w-[9rem] truncate">{d.pill}</span>
         <IconChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div role="dialog" aria-label="Model and effort" className="pop-in absolute bottom-full right-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-dock-line bg-surface p-3 shadow-2xl" data-testid="model-popover">
+        <div role="dialog" aria-label="Model and effort" style={{ maxHeight: fit.maxHeight }} className={`${fit.side === "above" ? "pop-in bottom-full mb-2" : "pop-in-down top-full mt-2"} absolute right-0 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-dock-line bg-surface p-3 shadow-2xl`} data-testid="model-popover" data-side={fit.side}>
           <Swap id={custom ? "models" : "effort"} dir={dir}>
           {!custom ? (
             <>
-              <p className="px-1 pb-3 text-[13.5px] leading-snug text-fg-muted"><span className="font-medium text-fg">{d.title}</span> {d.blurb}</p>
+              <p className="px-1 pb-3 text-[13.5px] leading-snug text-fg-muted">{d.maker && <BrandIcon maker={d.maker} className="mr-1.5 inline-block size-[15px] -translate-y-px align-middle text-fg" />}<span className="font-medium text-fg">{d.title}</span> {d.blurb}</p>
               <LevelSlider level={value.level} onPick={(level) => onChange({ level })} />
               <div className="relative mt-2 h-4 text-[11.5px] text-fg-dim">{LEVELS.map((l, i) => <span key={l} className="absolute top-0 -translate-x-1/2 transition-colors duration-150" style={{ left: stopLeft(i, LEVELS.length), ...(l === value.level && !value.pin ? { color: effortOf(l).color } : {}) }}>{LEVEL_INFO[l].label}</span>)}</div>
               {allowCustom && <div className="mt-3 border-t border-line pt-1">
@@ -112,13 +129,15 @@ export function ModelPill({ value, onChange, disabled, allowCustom = true }: { v
           ) : (
             <>
               <button type="button" onClick={() => { setDir(-1); setCustom(false); }} className="mb-1 flex items-center gap-1 px-1 py-1 text-[12.5px] text-fg-dim hover:text-fg"><IconChevronRight className="size-3.5 rotate-180" />Effort</button>
-              <ul className="max-h-72 overflow-y-auto" role="listbox" aria-label="Models">
-                {PICKABLE.map((m) => {
-                  const on = value.pin?.provider === m.provider && value.pin.model === m.model;
+              <ul role="listbox" aria-label="Models">
+                {pickList().map((m) => {
+                  const on = isPicked(value.pin, m);
+                  const maker = makerOf(m.model);
                   return (
-                    <li key={`${m.provider}:${m.model}`} role="option" aria-selected={on}>
-                      <button type="button" onClick={() => { onChange({ level: value.level, pin: { provider: m.provider, model: m.model } }); setOpen(false); setCustom(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-surface-2">
-                        <span className="min-w-0 flex-1"><span className="block truncate text-[13.5px] text-fg">{m.label}</span><span className="block truncate text-[12px] text-fg-dim">{m.note}</span></span>
+                    <li key={m.label} role="option" aria-selected={on}>
+                      <button type="button" onClick={() => { onChange({ level: value.level, pin: { provider: m.provider, model: m.model } }); setOpen(false); setCustom(false); }} className="press flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left hover:bg-surface-2" data-testid="model-option">
+                        {maker ? <BrandIcon maker={maker} className="size-[18px] text-fg" /> : <span className="size-[18px] shrink-0" />}
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">{m.label}</span>
                         {on && <IconCheck className="size-4 shrink-0 text-accent" />}
                       </button>
                     </li>

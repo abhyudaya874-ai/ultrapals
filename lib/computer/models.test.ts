@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { callModelHedged, defaultModelDeps, orderModels, type ModelDeps } from "./model";
 import { familyOf } from "@/lib/pals/family";
-import { BROWSING_FIRST, LEVEL_INFO, PICKABLE, browsingDeps, describeChoice, modelDepsFor, parseChoice, preferFirst, roundsFor } from "./models";
+import { BROWSING_FIRST, LEVEL_INFO, PICKABLE, browsingDeps, describeChoice, isPicked, makerOf, modelDepsFor, parseChoice, pickList, preferFirst, roundsFor } from "./models";
+import { BRAND_PATHS } from "@/components/ui/brand-icons";
 import { collect, scripted } from "./fakes";
 
 const base: ModelDeps = { ...defaultModelDeps, now: () => 1000 };
@@ -163,4 +164,35 @@ describe("roundsFor / describeChoice / parseChoice", () => {
     [{ level: "high", pin: { provider: "evil", model: "x" } }, { level: "high" }],
     [{ level: "high", pin: { provider: "groq", model: "x".repeat(200) } }, { level: "high" }],
   ])("parseChoice(%j)", (input, want) => expect(parseChoice(input)).toEqual(want));
+});
+
+describe("company marks in the model menu", () => {
+  it.each([
+    ["openai/gpt-oss-120b", "openai"], ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia"], ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia"], ["qwen/qwen3.8-27b", "qwen"],
+    ["gemini-3.5-flash-lite", "gemini"], ["google/gemma-4-31b-it:free", "gemma"], ["meta/muse-glimmer-30b", null],
+  ] as const)("%s -> %s", (id, maker) => expect(makerOf(id)).toBe(maker));
+  it("every model a person can pick has a mark, and every mark has a drawing", () => {
+    for (const p of PICKABLE) expect(makerOf(p.model), p.model).not.toBeNull();
+    for (const m of Object.keys(BRAND_PATHS)) expect(BRAND_PATHS[m as keyof typeof BRAND_PATHS].length, m).toBeGreaterThan(100);
+  });
+  it("Google is there: the three free Gemini models are in the list with the Gemini mark", () => {
+    const g = pickList().filter((m) => m.provider === "gemini");
+    expect(g.map((m) => m.label)).toEqual(["Gemini 3 Flash", "Gemini 3.5 Flash-Lite", "Gemini 3.1 Flash-Lite"]);
+  });
+  it("shows each model once, on the host that is not the credit-funded gateway", () => {
+    const list = pickList();
+    expect(new Set(list.map((m) => m.label)).size).toBe(list.length);
+    const lightning = list.find((m) => m.label === "Nemotron 3.5 Lightning 30B")!;
+    expect(lightning.provider).toBe("nvidia");
+    // a person who pinned the gateway's copy still sees it ticked
+    expect(isPicked({ provider: "bluesminds", model: "nvidia/nemotron-3.5-lightning-30b-a3b" }, lightning)).toBe(true);
+    expect(isPicked({ provider: "groq", model: "openai/gpt-oss-20b" }, lightning)).toBe(false);
+    expect(isPicked(undefined, lightning)).toBe(false);
+  });
+  it("names the maker of what the pill shows: a pinned model, or a preset's lead; Standard rotates, so none", () => {
+    expect(describeChoice({ level: "standard", pin: { provider: "gemini", model: "gemini-3-flash-preview" } }).maker).toBe("gemini");
+    expect(describeChoice({ level: "ultra" }).maker).toBe("nvidia");
+    expect(describeChoice({ level: "high" }).maker).toBe("openai");
+    expect(describeChoice({ level: "standard" }).maker).toBeNull();
+  });
 });

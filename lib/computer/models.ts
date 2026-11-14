@@ -50,6 +50,34 @@ export const PICKABLE: (ModelRef & { label: string; note: string })[] = [
   { provider: "gemini", model: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", note: "Google · free tier" },
 ];
 
+/** Whose mark goes beside a model's name. Google has two: Gemini's star and Gemma's own. */
+export type Maker = "openai" | "gemini" | "gemma" | "nvidia" | "qwen";
+/** Pure. Who made a model, read from its id (any provider's copy of it), or null for one nobody here has a mark for. */
+export function makerOf(model: string): Maker | null {
+  const m = model.toLowerCase();
+  if (m.includes("gpt-oss")) return "openai";
+  if (m.includes("gemini")) return "gemini";
+  if (m.includes("gemma")) return "gemma";
+  if (m.includes("nemotron") || m.startsWith("nvidia/")) return "nvidia";
+  if (m.includes("qwen")) return "qwen";
+  return null;
+}
+/**
+ * Pure. The models the Custom list shows: each name once. Two providers can serve the same model (Nemotron Lightning on NVIDIA and on Bluesminds); the
+ * person picks a model, not a host, so the list shows one and prefers the host that is not the credit-funded gateway.
+ */
+export function pickList<T extends ModelRef & { label: string }>(list: readonly T[] = PICKABLE as unknown as readonly T[]): T[] {
+  const out: T[] = [];
+  for (const m of list) {
+    const i = out.findIndex((x) => x.label === m.label);
+    if (i < 0) out.push(m);
+    else if (out[i].provider === "bluesminds" && m.provider !== "bluesminds") out[i] = m;
+  }
+  return out;
+}
+/** Pure. True when the pinned model is this list entry, or the same model on another host. */
+export const isPicked = (pin: ModelRef | undefined, m: ModelRef & { label: string }): boolean => !!pin && PICKABLE.some((p) => p.label === m.label && same(p, pin));
+
 const same = (a: ModelRef, b: ModelRef): boolean => a.provider === b.provider && a.model === b.model;
 export const isPinnable = (m: ModelRef, roster: readonly ModelRef[]): boolean => roster.some((r) => same(r, m));
 
@@ -93,13 +121,14 @@ export function browsingDeps(base: ModelDeps): ModelDeps {
 export const roundsFor = (choice: ModelChoice): number => (choice.pin ? LEVEL_INFO.standard.rounds : LEVEL_INFO[choice.level].rounds);
 
 /** Pure. The pill text and the popover headline for a choice. */
-export function describeChoice(choice: ModelChoice): { pill: string; title: string; blurb: string } {
+export function describeChoice(choice: ModelChoice): { pill: string; title: string; blurb: string; maker: Maker | null } {
   if (choice.pin) {
     const p = PICKABLE.find((m) => same(m, choice.pin!));
-    return { pill: p?.label ?? choice.pin.model, title: p?.label ?? choice.pin.model, blurb: "chosen by you. Used first on every call; the other models stay as fallbacks." };
+    return { pill: p?.label ?? choice.pin.model, title: p?.label ?? choice.pin.model, blurb: "chosen by you. Used first on every call; the other models stay as fallbacks.", maker: makerOf(choice.pin.model) };
   }
   const i = LEVEL_INFO[choice.level];
-  return { pill: i.label, title: i.lead, blurb: i.blurb };
+  // Standard has no lead model, it rotates through all of them: no mark
+  return { pill: i.label, title: i.lead, blurb: i.blurb, maker: choice.level === "standard" ? null : makerOf(i.first[0] ?? "") };
 }
 
 export const PROVIDERS: readonly ChatProvider[] = ["groq", "openrouter", "nvidia", "tokenrouter", "bluesminds", "gemini"];
